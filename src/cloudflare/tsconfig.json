@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.build.json",
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "lib": ["ES2024", "ESNext.Disposable"],
+    "types": ["@cloudflare/workers-types"],
+    "rootDir": "..",
+    "outDir": "../../dist"
+  },
+  "include": ["index.ts"],
+  "exclude": []
+}

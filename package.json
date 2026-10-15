@@ -1,0 +1,90 @@
+{
+  "name": "@fungi.computer/braid",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Pure versioned Workflow graph validation and content-addressed compilation",
+  "exports": {
+    "./git-access": {
+      "types": "./dist/git-access.d.ts",
+      "import": "./dist/git-access.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsc -p src/cloudflare/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p src/cloudflare/tsconfig.json --noEmit",
+    "lint": "eslint --global TextEncoder --global crypto src test --max-warnings=0 && ../../node_modules/.bin/oxlint --config ../../oxlint.config.ts --deny-warnings src test",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "format:check": "node ../../tooling/repository/scripts/format-package-check.mjs",
+    "lint:anti-slop": "node ../../tooling/repository/scripts/lint-package-anti-slop.mjs"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "4.1.1",
+    "@fungi.computer/almanac": "workspace:*",
+    "@fungi.computer/mycelium": "workspace:*",
+    "effect": "4.0.2",
+    "jsonpointer": "5.0.1",
+    "mustache": "4.2.0",
+    "zod": "4.4.3",
+    "@fungi.computer/agar": "workspace:*",
+    "@fungi.computer/watchdog": "workspace:*",
+    "@fungi.computer/puffball": "workspace:*",
+    "@fungi.computer/cairn": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260828.1",
+    "@types/mustache": "4.2.6",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "license": "MIT",
+  "botanical": {
+    "role": "package",
+    "operations": {
+      "lint": "required",
+      "typecheck": "required",
+      "build": "required",
+      "test": "required",
+      "docs": {
+        "status": "not-applicable",
+        "reason": "Internal graph contract documented in README; shared docs tooling not yet wired for this package"
+      },
+      "pack": {
+        "status": "not-applicable",
+        "reason": "Shared pack tooling not yet wired for this package"
+      },
+      "smoke": {
+        "status": "not-applicable",
+        "reason": "No standalone runtime entry point; exercised by unit and Hub consumer proofs"
+      },
+      "stranger": {
+        "status": "not-applicable",
+        "reason": "Shared stranger consumer proof not yet wired for this package"
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fungi-computer/braid.git"
+  }
+}
