@@ -1,6 +1,7 @@
 {
   "name": "@fungi.computer/braid",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "author": "Levi <levi@technomancy.dev>",
   "type": "module",
   "description": "Pure versioned Workflow graph validation and content-addressed compilation",
   "exports": {
@@ -86,5 +87,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/fungi-computer/braid.git"
+  },
+  "fungi": {
+    "build": {
+      "typescript": [
+        "src/cloudflare/tsconfig.json"
+      ]
+    }
   }
 }

@@ -193,7 +193,7 @@ it("refuses a key run when admitKey is false, and fails closed when the port is 
         {
           installationId: "workflows-a",
           appId: "app:workflows",
-          displayName: "Workflows",
+          displayName: "Trellis",
           methods: {},
           workflowRunGranted: true,
         },

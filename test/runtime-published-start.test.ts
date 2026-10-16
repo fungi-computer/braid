@@ -61,7 +61,7 @@ async function fixture(
     let entry: WorkflowCatalogEntry = {
       installationId: "library",
       appId: "app.workflows",
-      displayName: "Workflows",
+      displayName: "Trellis",
       methods: {},
     };
     entry = {

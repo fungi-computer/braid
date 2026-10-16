@@ -60,8 +60,8 @@ it("admits the exact active node context while keeping its binding ceiling host-
     Promise.resolve([
       {
         installationId: "library",
-        appId: "app_workflows",
-        displayName: "Workflows",
+        appId: "app_trellis",
+        displayName: "Trellis",
         methods: {},
         capabilities: ["workflow.publish"],
         workflowPublishGranted: true,

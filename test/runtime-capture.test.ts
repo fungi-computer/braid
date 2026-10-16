@@ -376,8 +376,8 @@ it("starts a cached Save with its armed Team-source binding only inside the curr
   };
   const publisher = {
     installationId: "workflows-a",
-    appId: "app_workflows",
-    displayName: "Workflows",
+    appId: "app_trellis",
+    displayName: "Trellis",
     methods: {},
     capabilities: ["workflow.publish" as const],
     workflowPublishGranted: true,

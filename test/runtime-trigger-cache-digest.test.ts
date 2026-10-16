@@ -78,8 +78,8 @@ it("preserves the original publication digest through cache recreation and start
       Promise.resolve([
         {
           installationId: "workflows-a",
-          appId: "app_workflows",
-          displayName: "Workflows",
+          appId: "app_trellis",
+          displayName: "Trellis",
           methods: {},
           capabilities: ["workflow.publish" as const],
           workflowPublishGranted: true,
@@ -114,8 +114,8 @@ it("preserves the original publication digest through cache recreation and start
       Promise.resolve([
         {
           installationId: "workflows-a",
-          appId: "app_workflows",
-          displayName: "Workflows",
+          appId: "app_trellis",
+          displayName: "Trellis",
           methods: {},
           capabilities: ["workflow.publish" as const],
           workflowPublishGranted: true,

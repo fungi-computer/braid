@@ -8,8 +8,8 @@ export const memberArm = {
     selection: {
       instanceId: "instance-workflows",
       owner: { kind: "installation", id: "workflows-a" },
-      appId: "app_workflows",
-      releaseId: "rel_workflows",
+      appId: "app_trellis",
+      releaseId: "rel_trellis",
       authorityVersion: 1,
     },
     artifactDigest: `sha256:${"a".repeat(64)}`,

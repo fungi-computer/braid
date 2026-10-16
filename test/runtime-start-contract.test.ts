@@ -100,7 +100,7 @@ it("compiles an admitted installation while a Team-source selection cannot stand
 
 it("retains the same canonical bindings in a trigger target without granting an App installation", () => {
   const target = {
-    installationId: "workflows",
+    installationId: "trellis",
     workflowId: "review",
     commit: "a".repeat(40),
     digest: "sha256:" + "a".repeat(64),
