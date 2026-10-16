@@ -1,4 +1,5 @@
 import * as S from "effect/Schema";
+import { resultRowSchemaV1 } from "@fungi.computer/gills";
 import type { ExecutionPlan, Json, Method } from "./schema.js";
 const id = S.String.pipe(
   S.check(S.isMinLength(1)),
@@ -8,6 +9,23 @@ const natural = S.Number.pipe(
   S.check(S.isInt()),
   S.check(S.isGreaterThanOrEqualTo(0)),
 );
+/**
+ * One loop a step runs inside: which Map item or Repeat round this pass is,
+ * counted from 0, of how many. The runtime knows both while it executes; the
+ * iteration id is a digest and says neither.
+ */
+export const loopPlaceSchema = S.Struct({
+  node: id,
+  loop: S.Literals(["map", "repeat"]),
+  index: natural,
+  count: natural,
+});
+export type LoopPlace = typeof loopPlaceSchema.Type;
+/** Outermost loop first. Nesting needs one loop node per level, so the 64-node graph bound holds. */
+export const loopPositionSchema = S.Array(loopPlaceSchema).check(
+  S.isMaxLength(64),
+);
+export type LoopPosition = typeof loopPositionSchema.Type;
 export const graphParamsSchema = S.Union([
   S.Struct({ kind: S.Literal("run"), teamId: id, runId: id, planDigest: id }),
   S.Struct({
@@ -20,6 +38,7 @@ export const graphParamsSchema = S.Union([
     parentInstanceId: id,
     completionEvent: id,
     input: S.JsonObject,
+    position: loopPositionSchema,
   }),
 ]);
 export type GraphParams = typeof graphParamsSchema.Type;
@@ -28,6 +47,8 @@ export const nodeEventSchema = S.Struct({
   graphId: S.optionalKey(id),
   nodeId: id,
   iteration: id,
+  /** The loops around this step; absent at the top of the run. */
+  position: S.optionalKey(loopPositionSchema),
   poll: S.optionalKey(natural),
   state: S.Literals([
     "queued",
@@ -44,6 +65,8 @@ export const nodeEventSchema = S.Struct({
   costMilliunits: S.optionalKey(natural),
   outputDigest: S.optionalKey(id),
   output: S.optionalKey(S.JsonObject),
+  /** How the finished App call reads to a person; absent when the App declares no presentation. */
+  row: S.optionalKey(resultRowSchemaV1),
   errorMessage: S.optionalKey(S.String.check(S.isMaxLength(1024))),
   refusal: S.optionalKey(id),
 });
@@ -52,6 +75,8 @@ export const graphReviewSchema = S.Struct({
   runId: id,
   nodeId: id,
   iteration: id,
+  /** The loops around this review; absent at the top of the run. */
+  position: S.optionalKey(loopPositionSchema),
   instanceId: id,
   eventType: id,
   title: S.String,
@@ -103,6 +128,7 @@ export const dispatchResultSchema = S.Union([
     kind: S.Literal("complete"),
     output: S.Json,
     costMilliunits: natural,
+    row: S.optionalKey(resultRowSchemaV1),
   }),
   S.Struct({ kind: S.Literal("refused"), code: S.Literals(refusalCodes) }),
   S.Struct({ kind: S.Literal("pending_approval"), actionId: id }),

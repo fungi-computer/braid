@@ -81,10 +81,12 @@ export type WorkflowNodeAdmission = Pick<
   memberId: string;
   context: WorkflowRunContext;
 };
-const workflowNodeTargetSchema = z.strictObject({
-  installationId: z.string().min(1).max(256),
-  method: z.string().min(1).max(256),
-});
+const workflowNodeTargetSchema = z.lazy(() =>
+  z.strictObject({
+    installationId: z.string().min(1).max(256),
+    method: z.string().min(1).max(256),
+  }),
+);
 
 /**
  * The one Workflow run owner: graph runs, their captured authority, trigger

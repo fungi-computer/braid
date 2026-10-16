@@ -29,6 +29,14 @@ it("omits hidden methods from the Workflow catalog without changing visible meth
   expect(catalog).toEqual(visible);
 });
 
+it("keeps a method's presentation out of its graph contract and digest", async () => {
+  const visible = await catalogMethods({ generate });
+  const presented = await catalogMethods({
+    generate: { ...generate, present: { verb: "made" } },
+  });
+  expect(presented).toEqual(visible);
+});
+
 it("pins a declared method by its ports, effect and requires, not its wording", async () => {
   const first = await catalogMethods({ generate });
   const reworded = await catalogMethods({

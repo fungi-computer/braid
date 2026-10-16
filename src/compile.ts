@@ -213,6 +213,8 @@ export type DeclaredMethod = Readonly<{
   pending?: true | undefined;
   /** Discovery-only metadata from the App declaration; hidden methods have no graph ports. */
   hidden?: true | undefined;
+  /** Presentation is display metadata and never part of a method's graph contract. */
+  present?: object | undefined;
   description: string;
   input: object;
   output: object;
@@ -242,6 +244,13 @@ function completionView(
   return Option.isSome(union) ? schemaView(union.value.anyOf[0]) : output;
 }
 
+/** The graph-facing contract of one method: no discovery or display metadata. */
+function graphContract(method: DeclaredMethod) {
+  const { description, input, output, effect, requires } = method;
+  const contract = { description, input, output, effect, requires };
+  return method.pending === true ? { ...contract, pending: true } : contract;
+}
+
 /**
  * The catalog entry for one App's declared methods. The digest covers what a
  * node depends on (ports, effect, approval, requires), not the description, so
@@ -253,8 +262,10 @@ export async function catalogMethods(
 ): Promise<Catalog[string]> {
   const entries = await Promise.all(
     Object.entries(methods)
-      .flatMap(([name, { hidden, ...declared }]) =>
-        hidden === true ? [] : [[name, declared] as const],
+      .flatMap(([name, declared]) =>
+        declared.hidden === true
+          ? []
+          : [[name, graphContract(declared)] as const],
       )
       .map(async ([name, declared]) => {
         const method = S.decodeUnknownSync(methodSchema)(

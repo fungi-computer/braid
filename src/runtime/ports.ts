@@ -1,4 +1,5 @@
 import type { Pending } from "@fungi.computer/agar/backend-definition";
+import type { ResultRow } from "@fungi.computer/gills";
 import type { RunCeiling } from "./run-ceiling.js";
 import type { Catalog } from "../index.js";
 import type * as Schema from "effect/Schema";
@@ -37,7 +38,13 @@ export type WorkflowAppCall = (GraphNodeContext | WorkflowRunContext) &
 /** The engine's refusal vocabulary (Braid dispatch results). */
 export type WorkflowAppCallResult =
   | Pending
-  | Readonly<{ kind: "complete"; output: Schema.Json; costMilliunits: number }>
+  | Readonly<{
+      kind: "complete";
+      output: Schema.Json;
+      costMilliunits: number;
+      /** How the finished call reads to a person, when the App declares a presentation. */
+      row?: ResultRow;
+    }>
   | Readonly<{
       kind: "refused";
       code:

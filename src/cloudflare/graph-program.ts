@@ -1,6 +1,7 @@
 import * as S from "effect/Schema";
 import * as Effect from "effect/Effect";
 import { executeCode, type CodeExecution } from "../code-execution.js";
+import type { ResultRow } from "@fungi.computer/gills";
 import type { WorkflowStep } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
 import {
@@ -174,6 +175,10 @@ export async function runGraphWorkflow(
   if (admitted.kind === "invalid") throw new NonRetryableError("invalid_input");
   const input = admitted.input;
   const iteration = checked.kind === "run" ? "0" : checked.iteration;
+  const position = checked.kind === "run" ? [] : checked.position;
+  /** Steps inside a loop say which item or round they belong to. */
+  const placed = <T extends object>(record: T) =>
+    position.length === 0 ? record : { ...record, position };
   const values: Record<string, Readonly<Record<string, Json>>> = {};
   values.$input = input;
   const baseEvent = (
@@ -191,7 +196,7 @@ export async function runGraphWorkflow(
     };
     if (poll !== undefined) event = { ...event, poll };
     return checked.kind === "map-item"
-      ? { ...event, graphId: checked.body }
+      ? placed({ ...event, graphId: checked.body })
       : event;
   };
   const complete = async (
@@ -201,17 +206,19 @@ export async function runGraphWorkflow(
     costMilliunits = 0,
     durationMs = 0,
     poll?: number,
+    row?: ResultRow,
   ) => {
     const ports = { ...output, after: true };
     if (exceedsResultLimit(ports))
       return fail(node, "step_result_limit", undefined, poll);
-    await dispatcher.recordEvent({
+    const event = {
       ...baseEvent(node, "complete", attempt, poll),
       costMilliunits,
       durationMs,
       outputDigest: await contentDigest(ports),
       output,
-    });
+    };
+    await dispatcher.recordEvent(row === undefined ? event : { ...event, row });
     return ports;
   };
   const fail = async (
@@ -412,6 +419,7 @@ export async function runGraphWorkflow(
                   result.costMilliunits,
                   Date.now() - start,
                   poll,
+                  result.row,
                 ),
               };
             },
@@ -458,18 +466,20 @@ export async function runGraphWorkflow(
           "review_" +
           (await contentDigest([instanceId, node.id, iteration])).slice(7);
         const expiresAt = await step.do(name + ":pending", async () => {
-          const deadline = await dispatcher.openReview({
-            runId: checked.runId,
-            nodeId: node.id,
-            iteration,
-            instanceId,
-            eventType,
-            title: node.title,
-            reviewers: node.reviewers,
-            timeout: node.timeout,
-            show: node.show.map((ref) => readPort(values, ref) ?? null),
-            ...reviewChoices(node),
-          });
+          const deadline = await dispatcher.openReview(
+            placed({
+              runId: checked.runId,
+              nodeId: node.id,
+              iteration,
+              instanceId,
+              eventType,
+              title: node.title,
+              reviewers: node.reviewers,
+              timeout: node.timeout,
+              show: node.show.map((ref) => readPort(values, ref) ?? null),
+              ...reviewChoices(node),
+            }),
+          );
           await dispatcher.recordEvent(baseEvent(node, "waiting"));
           return deadline;
         });
@@ -537,6 +547,15 @@ export async function runGraphWorkflow(
               parentInstanceId: instanceId,
               completionEvent: eventType,
               input: { item, round, previous },
+              position: [
+                ...position,
+                {
+                  node: node.id,
+                  loop: "repeat",
+                  index: round,
+                  count: node.maxRounds,
+                },
+              ],
             };
             try {
               await workflows.create({ id: childId, params });
@@ -610,6 +629,15 @@ export async function runGraphWorkflow(
                       ])
                     ).slice(7),
                   input: { item, index: itemIndex },
+                  position: [
+                    ...position,
+                    {
+                      node: node.id,
+                      loop: "map",
+                      index: itemIndex,
+                      count: list.length,
+                    },
+                  ],
                 };
                 try {
                   await workflows.create({ id: childId, params: childParams });

@@ -1,7 +1,11 @@
 import { expect, it } from "vitest";
 import { validate, type WorkflowDefinition } from "../src/index.js";
 
-type Choices = readonly { readonly id: string; readonly label: string }[];
+type Choices = readonly {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+}[];
 const look = {
   id: "look",
   kind: "review",
@@ -27,7 +31,11 @@ const reviewGraph = (
   output,
 });
 const choices = [
-  { id: "keep", label: "Keep" },
+  {
+    id: "keep",
+    label: "Keep",
+    description: "added to the contact sheet, then the next beat starts",
+  },
   { id: "animate", label: "Keep and animate" },
   { id: "redo", label: "Regenerate" },
 ];

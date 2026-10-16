@@ -3,7 +3,7 @@ import type { WorkflowRunMember } from "./run-authority.js";
 import { decodeWorkflowRunMember } from "./run-member.js";
 
 const identity = z.string().min(1).max(256);
-const membershipVersion = z.number().int().nonnegative();
+const membershipVersion = z.lazy(() => z.number().int().nonnegative());
 const connector = z.strictObject({
   kind: z.literal("connector"),
   agentId: identity,
@@ -27,37 +27,41 @@ export const workflowArmedViaSchema = z.discriminatedUnion("kind", [
 export type WorkflowArmedVia = z.output<typeof workflowArmedViaSchema>;
 
 /** The grantor stays the armer; decoding this shape alone grants no authority. */
-export const workflowArmingReceiptSchema = z
-  .strictObject({
-    armedBy: identity,
-    /** A human arm has an explicit null; Agent arms retain their actual live source. */
-    armedVia: workflowArmedViaSchema.nullable(),
-    grantorMembershipVersion: membershipVersion,
-  })
-  .superRefine((receipt, context) => {
-    if (
-      receipt.armedVia?.kind === "policy" &&
-      receipt.armedVia.grantorMemberId !== receipt.armedBy
-    )
-      context.addIssue({
-        code: "custom",
-        path: ["armedVia", "grantorMemberId"],
-        message: "The approved policy grantor must be the armer",
-      });
-  });
+export const workflowArmingReceiptSchema = z.lazy(() =>
+  z
+    .strictObject({
+      armedBy: identity,
+      /** A human arm has an explicit null; Agent arms retain their actual live source. */
+      armedVia: workflowArmedViaSchema.nullable(),
+      grantorMembershipVersion: membershipVersion,
+    })
+    .superRefine((receipt, context) => {
+      if (
+        receipt.armedVia?.kind === "policy" &&
+        receipt.armedVia.grantorMemberId !== receipt.armedBy
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["armedVia", "grantorMemberId"],
+          message: "The approved policy grantor must be the armer",
+        });
+    }),
+);
 /** Captured by a host after current frame, installation and member admission. */
 export type WorkflowArmingReceipt = z.output<
   typeof workflowArmingReceiptSchema
 >;
 
 /** Current host-owner readback, after live grantor and approval checks. */
-export const workflowArmingAccessSchema = z.discriminatedUnion("kind", [
-  connector.extend({
-    grantorMemberId: identity,
-    level: z.enum(["read", "write"]),
-  }),
-  policy.extend({ level: z.enum(["read", "write"]) }),
-]);
+export const workflowArmingAccessSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    connector.extend({
+      grantorMemberId: identity,
+      level: z.enum(["read", "write"]),
+    }),
+    policy.extend({ level: z.enum(["read", "write"]) }),
+  ]),
+);
 /** The actual source identity plus its currently approved access level. */
 export type WorkflowArmingAccess = z.output<typeof workflowArmingAccessSchema>;
 

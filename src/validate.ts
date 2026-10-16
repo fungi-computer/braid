@@ -3,6 +3,10 @@ import * as S from "effect/Schema";
 import * as Result from "effect/Result";
 import { nextOccurrence } from "@fungi.computer/almanac";
 import {
+  reviewTextPlaceholders,
+  unknownReviewPlaceholders,
+} from "./review-text.js";
+import {
   workflowDefinitionSchema,
   catalogSchema,
   TRIGGER_EVENT_PORTS,
@@ -465,6 +469,16 @@ export function analyze(
         case "review": {
           const shown = node.show[0];
           const item = shown ? (source(shown) ?? {}) : {};
+          for (const text of [
+            node.detail ?? "",
+            ...(node.choices ?? []).map((choice) => choice.description ?? ""),
+          ])
+            for (const name of unknownReviewPlaceholders(text))
+              issue(
+                "schema",
+                `Unknown review placeholder {${name}}; use ${reviewTextPlaceholders.map((known) => `{${known}}`).join(", ")}`,
+                { node: node.id },
+              );
           if (node.choices === undefined) {
             outs.set(node.id, {
               approved: item,

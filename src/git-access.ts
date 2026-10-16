@@ -9,13 +9,17 @@ const repository = z
   .regex(/^[a-zA-Z0-9._-]{1,128}$/)
   .refine((value) => value !== "." && value !== "..");
 
-const bindingName = z
-  .string()
-  .min(1)
-  .max(80)
-  .regex(/^[A-Za-z][A-Za-z0-9_-]*$/);
+const bindingName = z.lazy(() =>
+  z
+    .string()
+    .min(1)
+    .max(80)
+    .regex(/^[A-Za-z][A-Za-z0-9_-]*$/),
+);
 const identity = z.string().min(1).max(256);
-const teamSourceBinding = z.strictObject({ kind: z.literal("team-source") });
+const teamSourceBinding = z.lazy(() =>
+  z.strictObject({ kind: z.literal("team-source") }),
+);
 /** Frozen installation identity or explicit registered Team-source namespace. */
 export const workflowBindingSchema = z.union([
   z.strictObject({ appId: identity, installationId: identity }),
@@ -43,14 +47,16 @@ const branch = z
         .split("/")
         .every((part) => !part.startsWith(".") && !part.endsWith(".lock")),
   );
-const branches = z
-  .array(branch)
-  .min(1)
-  .max(256)
-  .refine(
-    (values) => new Set(values).size === values.length,
-    "Branches must be unique",
-  );
+const branches = z.lazy(() =>
+  z
+    .array(branch)
+    .min(1)
+    .max(256)
+    .refine(
+      (values) => new Set(values).size === values.length,
+      "Branches must be unique",
+    ),
+);
 
 /** Write access names a fixed repository and its exact branch ceiling, admitted at arm time. */
 const writeGitAccessSchema = z.strictObject({
@@ -75,13 +81,15 @@ export const gitAccessSchema = z.union([
 ]);
 
 /** Host-resolved scope carried to a process; data alone never grants this authority. */
-export const resolvedGitAccessSchema = z.union([
-  z.strictObject({ repository: repositoryRefSchema, branches }),
-  z.strictObject({
-    repository: repositoryRefSchema,
-    access: z.literal("read"),
-  }),
-]);
+export const resolvedGitAccessSchema = z.lazy(() =>
+  z.union([
+    z.strictObject({ repository: repositoryRefSchema, branches }),
+    z.strictObject({
+      repository: repositoryRefSchema,
+      access: z.literal("read"),
+    }),
+  ]),
+);
 export type GitAccess = z.infer<typeof gitAccessSchema>;
 export type ResolvedGitAccess = z.infer<typeof resolvedGitAccessSchema>;
 

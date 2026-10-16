@@ -133,15 +133,30 @@ export const nodeSchema = S.Union([
     id: name,
     kind: S.Literal("review"),
     title: boundedString(120),
+    /**
+     * One plain line under the title saying where the run is, such as
+     * `Beat {item} of {items} · try {try} of {tries}`. The placeholders are
+     * filled from the loops around the review (see `fillReviewText`).
+     */
+    detail: S.optionalKey(boundedString(160)),
     show: array(portRefSchema, 64),
     reviewers: S.Literals(["runner", "owners"]),
     timeout: duration,
     /**
      * Named outcomes a reviewer picks from; each is an output port carrying
-     * the shown item. Without choices the review approves or rejects.
+     * the shown item. Without choices the review approves or rejects. A
+     * choice's `description` says in plain words what picking it does, with
+     * the same placeholders as `detail`.
      */
     choices: S.optionalKey(
-      array(S.Struct({ id: name, label: boundedString(80) }), 8),
+      array(
+        S.Struct({
+          id: name,
+          label: boundedString(80),
+          description: S.optionalKey(boundedString(160)),
+        }),
+        8,
+      ),
     ),
   }),
   S.Struct({ id: name, kind: S.Literal("condition"), test: predicateSchema }),

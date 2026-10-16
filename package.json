@@ -1,6 +1,6 @@
 {
   "name": "@fungi.computer/braid",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "author": "Levi <levi@technomancy.dev>",
   "type": "module",
   "description": "Pure versioned Workflow graph validation and content-addressed compilation",
@@ -45,6 +45,7 @@
     "mustache": "4.2.0",
     "zod": "4.4.3",
     "@fungi.computer/agar": "workspace:*",
+    "@fungi.computer/gills": "workspace:*",
     "@fungi.computer/watchdog": "workspace:*",
     "@fungi.computer/puffball": "workspace:*",
     "@fungi.computer/cairn": "workspace:*"

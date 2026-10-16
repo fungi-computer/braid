@@ -6,24 +6,26 @@ import { gitAccessScope, resolvedGitAccessSchema } from "../git-access.js";
 
 const id = z.string().min(1).max(256);
 /** Non-secret Team-issued authority for one stored Workflow step on its pinned Computer. */
-export const workflowGitPassGrantSchema = z
-  .strictObject({
-    teamId: id,
-    computerId: id,
-    memberId: id,
-    workflow: workflowAttestationSchema,
-    runId: id,
-    graphId: id.optional(),
-    nodeId: id,
-    iteration: id,
-    scope: z.enum(["read", "write"]),
-    gitAccess: resolvedGitAccessSchema,
-    triggerId: id.optional(),
-  })
-  .refine(
-    (grant) => grant.scope === gitAccessScope(grant.gitAccess),
-    "A pass's scope is its admitted Git access",
-  );
+export const workflowGitPassGrantSchema = z.lazy(() =>
+  z
+    .strictObject({
+      teamId: id,
+      computerId: id,
+      memberId: id,
+      workflow: workflowAttestationSchema,
+      runId: id,
+      graphId: id.optional(),
+      nodeId: id,
+      iteration: id,
+      scope: z.enum(["read", "write"]),
+      gitAccess: resolvedGitAccessSchema,
+      triggerId: id.optional(),
+    })
+    .refine(
+      (grant) => grant.scope === gitAccessScope(grant.gitAccess),
+      "A pass's scope is its admitted Git access",
+    ),
+);
 export type WorkflowGitPassGrant = z.output<typeof workflowGitPassGrantSchema>;
 
 /** Run cleanup remains valid after the Computer's product data is erased. */

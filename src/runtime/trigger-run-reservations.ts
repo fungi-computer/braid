@@ -10,23 +10,31 @@ const reservationIds = defineIdFamily({
   kinds: { reservation: { prefix: "wf_trigger_reservation" } },
 });
 const identity = z.string().min(1).max(256);
-const triggerRunScopeSchema = z.strictObject({
-  installationId: identity,
-  workflowId: workflowIdSchema,
-  commit: gitSha1Schema,
-  triggerId: z.string().min(1).max(80),
-});
+const triggerRunScopeSchema = z.lazy(() =>
+  z.strictObject({
+    installationId: identity,
+    workflowId: workflowIdSchema,
+    commit: gitSha1Schema,
+    triggerId: z.string().min(1).max(80),
+  }),
+);
 export type TriggerRunScope = z.output<typeof triggerRunScopeSchema>;
-const reservationInputSchema = z.strictObject({
-  scope: triggerRunScopeSchema,
-  requestId: z.string().min(1).max(1024),
-});
-const rowSchema = z.object({
-  reservation_id: identity,
-  run_id: identity.nullable(),
-  status: z.enum(["active", "released", "terminal"]),
-});
-const countSchema = z.object({ count: z.number().int().nonnegative() });
+const reservationInputSchema = z.lazy(() =>
+  z.strictObject({
+    scope: triggerRunScopeSchema,
+    requestId: z.string().min(1).max(1024),
+  }),
+);
+const rowSchema = z.lazy(() =>
+  z.object({
+    reservation_id: identity,
+    run_id: identity.nullable(),
+    status: z.enum(["active", "released", "terminal"]),
+  }),
+);
+const countSchema = z.lazy(() =>
+  z.object({ count: z.number().int().nonnegative() }),
+);
 const scopeKey = (scope: TriggerRunScope) => {
   const parsed = triggerRunScopeSchema.parse(scope);
   return JSON.stringify([
