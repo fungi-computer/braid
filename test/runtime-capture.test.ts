@@ -211,7 +211,7 @@ it("captures real node admission and resolves Git through the run binding withou
       bindings: [
         {
           name: "COMPUTER" as const,
-          operations: ["workflowGitPass" as const, "processStart" as const],
+          operations: ["exec" as const, "processStart" as const],
         },
       ],
     }),
@@ -224,9 +224,7 @@ it("captures real node admission and resolves Git through the run binding withou
         nodeId: "save",
         level: "write",
         capabilities: ["computer.execute", "computer.writeFile"],
-        bindings: [
-          { name: "COMPUTER", operations: ["workflowGitPass", "processStart"] },
-        ],
+        bindings: [{ name: "COMPUTER", operations: ["exec", "processStart"] }],
       },
     ],
     nodeGitAccess: [
@@ -307,7 +305,7 @@ it("narrows a read node's real broader admission to read operations and Git read
       bindings: [
         {
           name: "COMPUTER",
-          operations: ["ports", "processStart", "workflowGitPass", "write"],
+          operations: ["ports", "processStart", "exec", "write"],
         },
         { name: "EVENTS", operations: ["emit"] },
       ],
@@ -427,9 +425,7 @@ it("starts a cached Save with its armed Team-source binding only inside the curr
       Promise.resolve({
         level: "write",
         capabilities: ["computer.execute", "computer.writeFile"],
-        bindings: [
-          { name: "COMPUTER", operations: ["workflowGitPass", "processStart"] },
-        ],
+        bindings: [{ name: "COMPUTER", operations: ["exec", "processStart"] }],
       }),
     git,
   });

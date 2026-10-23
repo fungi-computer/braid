@@ -2,96 +2,194 @@ import {
   repositoryRefsEqual,
   type RepositoryRef,
 } from "@fungi.computer/agar/git";
-import { workflowGitPassResultSchema } from "@fungi.computer/agar/computer-contracts";
 import type { WatchdogSqliteOwner } from "@fungi.computer/watchdog";
 import { z } from "zod";
+import { canonicalJson } from "../index.js";
 import {
+  formatWorkflowGitPassToken,
+  workflowGitPassTokenSchema,
   workflowGitPassGrantSchema,
   workflowGitPassRevocationSchema,
+  type WorkflowGitCredential,
   type WorkflowGitPassGrant,
 } from "./git-pass-contract.js";
 
-/** Scoped pass state shared by both Computer hosts; credentials never enter the grant. */
+const invocationIdSchema = z.string().min(1).max(256);
+const tokenSchema = z.string().regex(/^[0-9a-f]{64}$/u);
+const leaseSchema = z.strictObject({
+  invocation_id: invocationIdSchema,
+  run_id: z.string(),
+  grant_json: z.string(),
+  token_digest: z.string().nullable(),
+  expires_at: z.number().int(),
+  state: z.enum(["open", "closed"]),
+});
+const remoteSchema = z
+  .url({ protocol: /^https$/, abort: true })
+  .refine((value) => {
+    const url = new URL(value);
+    return url.username === "" && url.password === "";
+  }, "Workflow Git remotes must not contain credentials");
+
+function mintToken() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/** A verifier digest, never a native invocation identity or replay hash. */
+async function tokenDigest(token: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(token),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/** Optional internal fields use JSON's omission semantics at the storage boundary. */
+function serializeGrant(grant: WorkflowGitPassGrant) {
+  return canonicalJson(z.json().parse(JSON.parse(JSON.stringify(grant))));
+}
+
+/** One fresh credential per newly admitted native invocation; only its digest is durable. */
 export function createWorkflowGitPassStore(
   options: Readonly<{
     sql: WatchdogSqliteOwner["sql"];
     transactionSync: <T>(body: () => T) => T;
     ownerId(): string | null;
     computerId(): string | undefined;
-    mintPassId(): string;
-    remote(passId: string, repository: RepositoryRef): string;
+    mintToken?: () => string;
+    remote(repository: RepositoryRef): string;
     denied(): Error;
     now?: () => number;
   }>,
 ) {
   const { sql } = options;
   const now = options.now ?? Date.now;
-  sql.exec(`CREATE TABLE IF NOT EXISTS computer_workflow_git_passes (
-    pass_id TEXT PRIMARY KEY, node_key TEXT NOT NULL UNIQUE, run_id TEXT NOT NULL,
-    grant_json TEXT NOT NULL, expires_at INTEGER NOT NULL
+  // Pre-release reusable, plaintext pass state is disposable, not another reader.
+  sql.exec("DROP TABLE IF EXISTS computer_workflow_git_passes");
+  sql.exec(`CREATE TABLE IF NOT EXISTS computer_workflow_git_invocations (
+    invocation_id TEXT PRIMARY KEY, run_id TEXT NOT NULL,
+    grant_json TEXT NOT NULL, token_digest TEXT UNIQUE,
+    expires_at INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('open', 'closed'))
   ) STRICT`);
   sql.exec(
     `CREATE TABLE IF NOT EXISTS computer_workflow_git_ended_runs (run_id TEXT PRIMARY KEY) STRICT`,
   );
-  return Object.freeze({
-    openWorkflowPass(raw: WorkflowGitPassGrant) {
-      const grant = workflowGitPassGrantSchema.parse(raw);
-      if (
-        grant.teamId !== options.ownerId() ||
-        grant.computerId !== options.computerId() ||
-        grant.workflow.runId !== grant.runId ||
-        grant.workflow.nodeId !== grant.nodeId ||
-        grant.workflow.armedBy.kind !== "member" ||
-        grant.workflow.armedBy.memberId !== grant.memberId
+  function admittedGrant(raw: WorkflowGitPassGrant) {
+    const grant = workflowGitPassGrantSchema.parse(raw);
+    if (
+      grant.teamId !== options.ownerId() ||
+      grant.computerId !== options.computerId() ||
+      grant.workflow.runId !== grant.runId ||
+      grant.workflow.nodeId !== grant.nodeId ||
+      grant.workflow.armedBy.kind !== "member" ||
+      grant.workflow.armedBy.memberId !== grant.memberId
+    )
+      throw options.denied();
+    return grant;
+  }
+  function ended(runId: string) {
+    return (
+      sql
+        .exec(
+          "SELECT 1 FROM computer_workflow_git_ended_runs WHERE run_id=?",
+          runId,
+        )
+        .toArray().length !== 0
+    );
+  }
+  function read(invocationId: string) {
+    const row = sql
+      .exec(
+        "SELECT * FROM computer_workflow_git_invocations WHERE invocation_id=?",
+        invocationId,
       )
+      .toArray()[0];
+    return row === undefined ? undefined : leaseSchema.parse(row);
+  }
+  return Object.freeze({
+    /** Only the NEW native-admission path calls this; replay never obtains another secret. */
+    async issue(
+      rawInvocationId: string,
+      rawGrant: WorkflowGitPassGrant,
+    ): Promise<WorkflowGitCredential> {
+      const invocationId = invocationIdSchema.parse(rawInvocationId);
+      const grant = admittedGrant(rawGrant);
+      if (ended(grant.runId) || read(invocationId) !== undefined)
         throw options.denied();
+      const remote = remoteSchema.parse(
+        options.remote(grant.gitAccess.repository),
+      );
+      const token = tokenSchema.parse((options.mintToken ?? mintToken)());
+      const bearer = formatWorkflowGitPassToken(grant.teamId, token);
+      const digest = await tokenDigest(token);
       return options.transactionSync(() => {
-        if (
-          sql
-            .exec(
-              "SELECT 1 FROM computer_workflow_git_ended_runs WHERE run_id=?",
-              grant.runId,
-            )
-            .toArray().length > 0
-        )
+        // The digest await can race a terminal revocation or another issuer.
+        admittedGrant(grant);
+        if (ended(grant.runId) || read(invocationId) !== undefined)
           throw options.denied();
-        const key = JSON.stringify([
-          grant.runId,
-          grant.graphId ?? null,
-          grant.nodeId,
-          grant.iteration,
-          grant.scope,
-        ]);
-        const row = sql
-          .exec(
-            "SELECT pass_id,grant_json,expires_at FROM computer_workflow_git_passes WHERE node_key=?",
-            key,
-          )
-          .toArray()[0];
-        if (
-          row !== undefined &&
-          z.string().parse(row.grant_json) !== JSON.stringify(grant)
-        )
-          throw options.denied();
-        const passId =
-          row === undefined
-            ? options.mintPassId()
-            : z.string().parse(row.pass_id);
         const expiresAt = now() + 60_000;
         sql.exec(
-          `INSERT INTO computer_workflow_git_passes VALUES(?,?,?,?,?)
-          ON CONFLICT(node_key) DO UPDATE SET expires_at=excluded.expires_at`,
-          passId,
-          key,
+          "INSERT INTO computer_workflow_git_invocations VALUES(?,?,?,?,?,'open')",
+          invocationId,
           grant.runId,
-          JSON.stringify(grant),
+          serializeGrant(grant),
+          digest,
           expiresAt,
         );
-        return workflowGitPassResultSchema.parse({
-          passId,
-          expiresAt,
-          remote: options.remote(passId, grant.gitAccess.repository),
-        });
+        return { bearer, remote, expiresAt };
+      });
+    },
+    /** A live native replay can extend its existing lease, never issue or resurrect it. */
+    renew(rawInvocationId: string, rawGrant: WorkflowGitPassGrant): void {
+      const invocationId = invocationIdSchema.parse(rawInvocationId);
+      const grant = admittedGrant(rawGrant);
+      options.transactionSync(() => {
+        const row = read(invocationId);
+        if (
+          row?.state !== "open" ||
+          row.expires_at <= now() ||
+          row.grant_json !== serializeGrant(grant) ||
+          ended(grant.runId)
+        )
+          throw options.denied();
+        sql.exec(
+          "UPDATE computer_workflow_git_invocations SET expires_at=? WHERE invocation_id=?",
+          now() + 60_000,
+          invocationId,
+        );
+      });
+    },
+    /** Keep the public receipt so a delayed issuer cannot reopen the same invocation. */
+    close(rawInvocationId: string, rawGrant: WorkflowGitPassGrant): void {
+      const invocationId = invocationIdSchema.parse(rawInvocationId);
+      options.transactionSync(() => {
+        const row = read(invocationId);
+        if (row !== undefined) {
+          // Revocation never depends on current authority or reconstructed
+          // metadata still being sufficient to admit a new command.
+          sql.exec(
+            "UPDATE computer_workflow_git_invocations SET state='closed',token_digest=NULL WHERE invocation_id=?",
+            invocationId,
+          );
+          return;
+        }
+        const grant = workflowGitPassGrantSchema.parse(rawGrant);
+        // The run tombstone already prevents delayed issuance. Do not recreate
+        // receipts after terminal cleanup has deleted the run's invocation rows.
+        if (ended(grant.runId)) return;
+        // Close can beat the issue RPC or its digest await. Retain the same
+        // public identity either way, so neither can publish a later credential.
+        sql.exec(
+          "INSERT INTO computer_workflow_git_invocations VALUES(?,?,?,NULL,0,'closed')",
+          invocationId,
+          grant.runId,
+          serializeGrant(grant),
+        );
       });
     },
     /** Retain a tombstone so a delayed mint cannot resurrect a terminal run. */
@@ -104,37 +202,42 @@ export function createWorkflowGitPassStore(
           runId,
         );
         sql.exec(
-          "DELETE FROM computer_workflow_git_passes WHERE run_id=?",
+          "DELETE FROM computer_workflow_git_invocations WHERE run_id=?",
           runId,
         );
       });
     },
-    /** Re-admit the stored scope for every Git request; an expired pass grants nothing. */
-    admit(input: {
-      passId: string;
+    /** Every request also needs the host's live native-invocation and domain admission. */
+    async admit(input: {
+      bearer: string;
       repository: RepositoryRef;
       scope: "read" | "write";
-    }): WorkflowGitPassGrant | null {
-      const at = now();
-      const row = sql
+    }): Promise<{ invocationId: string; grant: WorkflowGitPassGrant } | null> {
+      const parsed = workflowGitPassTokenSchema.safeParse(input.bearer);
+      if (!parsed.success || parsed.data.ownerId !== options.ownerId())
+        return null;
+      const digest = await tokenDigest(parsed.data.token);
+      const raw = sql
         .exec(
-          "SELECT grant_json,expires_at FROM computer_workflow_git_passes WHERE pass_id=?",
-          input.passId,
+          "SELECT * FROM computer_workflow_git_invocations WHERE token_digest=?",
+          digest,
         )
         .toArray()[0];
-      if (row === undefined || z.number().parse(row.expires_at) <= at)
-        return null;
+      if (raw === undefined) return null;
+      const row = leaseSchema.parse(raw);
+      if (row.state !== "open" || row.expires_at <= now()) return null;
       const grant = workflowGitPassGrantSchema.parse(
-        JSON.parse(z.string().parse(row.grant_json)),
+        JSON.parse(row.grant_json),
       );
       if (
         grant.teamId !== options.ownerId() ||
         grant.computerId !== options.computerId() ||
         !repositoryRefsEqual(grant.gitAccess.repository, input.repository) ||
-        (input.scope === "write" && grant.scope !== "write")
+        (input.scope === "write" && grant.scope !== "write") ||
+        ended(grant.runId)
       )
         return null;
-      return grant;
+      return { invocationId: row.invocation_id, grant };
     },
   });
 }

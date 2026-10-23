@@ -88,7 +88,7 @@ it("admits the exact active node context while keeping its binding ceiling host-
         Promise.resolve({
           level: "write",
           capabilities: ["computer.execute"],
-          bindings: [{ name: "COMPUTER", operations: ["workflowGitPass"] }],
+          bindings: [{ name: "COMPUTER", operations: ["exec"] }],
         }),
       git: (actor, capturedMember, repository, scope) =>
         Promise.resolve(
@@ -183,7 +183,7 @@ it("admits the exact active node context while keeping its binding ceiling host-
     const stored = owner.graph.read(result.runId);
     if (stored === null) throw new Error("Started run missing");
     expect(stored.ceiling.nodes[0]?.bindings).toEqual([
-      { name: "COMPUTER", operations: ["workflowGitPass"] },
+      { name: "COMPUTER", operations: ["exec"] },
     ]);
     const target = { installationId: "shed", method: "save" };
     for (const changed of [

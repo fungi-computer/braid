@@ -194,7 +194,15 @@ export type WorkflowTriggerRunPorts = Readonly<{
       /** The firing event's repository, evaluated from the armed trigger. */
       triggerRepository?: string;
     },
+    /** Host-private binding check, evaluated with the durable run write. */
+    admission?: WorkflowTriggerAdmission,
   ): Promise<Exclude<GraphStartReply, { kind: "invalid" }>>;
+}>;
+
+/** Host-private checks and reservation identity, never supplied by a sender. */
+export type WorkflowTriggerAdmission = Readonly<{
+  admitBinding(): boolean;
+  reservationId?: string;
 }>;
 
 /** Hosts retain their existing error vocabulary and denial classification. */

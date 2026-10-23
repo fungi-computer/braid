@@ -40,6 +40,7 @@ import type {
   WorkflowAppCall,
   WorkflowAppCallResult,
   WorkflowCatalogEntry,
+  WorkflowTriggerAdmission,
 } from "./ports.js";
 import {
   compileForMember,
@@ -96,6 +97,8 @@ export function createTeamWorkflowRuns(options: {
   sql: WatchdogSqliteOwner["sql"];
   transactionSync: <T>(body: () => T) => T;
   teamId: () => string;
+  /** Host-owned wall clock; deterministic native journeys may supply their clock. */
+  now?: () => number;
   admission: () => "active" | "suspended";
   errors: Readonly<{
     app(code: "denied" | "invalid" | "unavailable"): Error;
@@ -573,6 +576,7 @@ export function createTeamWorkflowRuns(options: {
       started: Pick<GraphStartRequest, "requestId" | "input"> & {
         triggerRepository?: string;
       },
+      admission?: WorkflowTriggerAdmission,
     ) {
       const { triggerRepository, ...request } = started;
       await admitGraphMember(binding.armedBy, binding.computerId);
@@ -686,23 +690,43 @@ export function createTeamWorkflowRuns(options: {
         trigger = { ...trigger, nodeGitAccess: binding.nodeGitAccess };
       if (triggerRepository !== undefined)
         trigger = { ...trigger, repository: triggerRepository };
-      return startCompiled(
-        preparation,
-        binding.delivery === undefined
-          ? request
-          : { ...request, delivery: binding.delivery },
-        identity,
-        ceiling,
-        trigger,
-        {
-          installationId: binding.installationId,
-          workflowId: binding.workflowId,
-          commit: binding.commit,
-          digest: binding.digest,
-          armedBy: { kind: "member", memberId: binding.armedBy },
-        },
-        binding.installationId,
-      );
+      return options.transactionSync(() => {
+        // Different external bindings may share the compiled publication.
+        // Check the binding's owning store after all capture I/O, in the same
+        // transaction as the durable start, rather than invalidating its peers.
+        if (admission !== undefined && !admission.admitBinding())
+          return {
+            kind: "refused" as const,
+            reason: "Trigger binding is no longer armed",
+          };
+        const result = startCompiled(
+          preparation,
+          binding.delivery === undefined
+            ? request
+            : { ...request, delivery: binding.delivery },
+          identity,
+          ceiling,
+          trigger,
+          {
+            installationId: binding.installationId,
+            workflowId: binding.workflowId,
+            commit: binding.commit,
+            digest: binding.digest,
+            armedBy: { kind: "member", memberId: binding.armedBy },
+          },
+          binding.installationId,
+        );
+        if (
+          admission?.reservationId !== undefined &&
+          (result.kind === "started" || result.kind === "replay") &&
+          triggerReservations.bindTriggerRun(
+            admission.reservationId,
+            result.runId,
+          ) === "conflict"
+        )
+          throw new Error("Trigger reservation binding conflict");
+        return result;
+      });
     },
     callWorkflowApp: options.callWorkflowApp,
     admitDelivery: options.admitDelivery,

@@ -1,8 +1,4 @@
 import type { RepositoryRef } from "@fungi.computer/agar/git";
-import {
-  workflowGitPassResultSchema,
-  type WorkflowGitPassResult,
-} from "@fungi.computer/agar/computer-contracts";
 import type { WorkflowRunContext } from "./graph-contract.js";
 import type { StoredWorkflowNode } from "./graph-dispatch.js";
 import { canonicalJson } from "../index.js";
@@ -34,10 +30,6 @@ export function createWorkflowGitPasses(
       repository: RepositoryRef,
       scope: WorkflowGitScope,
     ): Promise<void>;
-    open(
-      computerId: string,
-      grant: WorkflowGitPassGrant,
-    ): Promise<WorkflowGitPassResult>;
     revoke(
       computerId: string,
       input: { teamId: string; runId: string },
@@ -51,10 +43,11 @@ export function createWorkflowGitPasses(
     ports.pending().length === 0 ? null : Date.now() + 5000;
   return {
     cleanupWake,
-    async openWorkflowPass(
+    /** Returns only public authority; native NEW admission owns credential issuance. */
+    async admitWorkflowGit(
       context: WorkflowRunContext,
       target: { installationId: string; method: string },
-    ): Promise<WorkflowGitPassResult> {
+    ): Promise<WorkflowGitPassGrant> {
       const admitted = ports.admitNode(context, target);
       if (
         admitted?.computerId == null ||
@@ -93,28 +86,7 @@ export function createWorkflowGitPasses(
         canonicalJson(admitted)
       )
         throw ports.denied();
-      const pass = workflowGitPassResultSchema.parse(
-        await ports.open(grant.computerId, grant),
-      );
-      try {
-        await ports.admitMemberGitAccess(
-          grant.memberId,
-          grant.gitAccess.repository,
-          scope,
-        );
-        if (
-          canonicalJson(ports.admitNode(context, target)) !==
-          canonicalJson(admitted)
-        )
-          throw ports.denied();
-      } catch (cause) {
-        await ports.revoke(grant.computerId, {
-          teamId: grant.teamId,
-          runId: grant.runId,
-        });
-        throw cause;
-      }
-      return pass;
+      return grant;
     },
     async deliverCleanups(): Promise<void> {
       try {

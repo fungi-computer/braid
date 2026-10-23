@@ -29,8 +29,8 @@ function readPassOwner(now: () => number) {
     ...fromNodeSqlite(database),
     ownerId: () => "owner",
     computerId: () => "computer",
-    mintPassId: () => "wgp_read",
-    remote: (_passId, repository) =>
+    mintToken: () => "b".repeat(64),
+    remote: (repository) =>
       `https://oyster.test/git/${repository.kind === "installation" ? repository.installationId : "team"}/${repository.repository}.git`,
     denied: () => new Error("denied"),
     now,
@@ -61,8 +61,6 @@ function readPassOwner(now: () => number) {
       admitted(memberId, repository, scope);
       return Promise.resolve();
     },
-    open: (_computerId, grant) =>
-      Promise.resolve(store.openWorkflowPass(grant)),
     revoke: (_computerId, input) => {
       store.revokeWorkflowRunGitPasses(input);
       return Promise.resolve();
@@ -73,45 +71,66 @@ function readPassOwner(now: () => number) {
   return { database, store, owner, admitted, context };
 }
 
-it("mints a read-only pass for exactly the admitted repository and refuses push", async () => {
+it("admits a public read-only grant without issuing a credential, then limits its command to that repository", async () => {
   let at = 1000;
   const f = readPassOwner(() => at);
   try {
-    const pass = await f.owner.openWorkflowPass(f.context, {
+    const admitted = await f.owner.admitWorkflowGit(f.context, {
       installationId: "shed-a",
       method: "runCommand",
     });
+    expect(admitted).toMatchObject({ scope: "read", gitAccess: readAccess });
+    expect(
+      f.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM computer_workflow_git_invocations",
+        )
+        .get()?.count,
+    ).toBe(0);
+    const pass = await f.store.issue("read-command", admitted);
     expect(pass).toEqual({
-      passId: "wgp_read",
+      bearer: `wgp.owner.${"b".repeat(64)}`,
       remote: "https://oyster.test/git/bonsai-a/pond.git",
       expiresAt: 61_000,
     });
-    // The live member policy is checked at read scope, before and after opening.
-    expect(f.admitted.mock.calls).toEqual([
-      ["member", pond, "read"],
-      ["member", pond, "read"],
-    ]);
-    const grant = f.store.admit({
-      passId: pass.passId,
+    // Initial admission checks the member at read scope and returns only a grant.
+    expect(f.admitted.mock.calls).toEqual([["member", pond, "read"]]);
+    const credential = await f.store.admit({
+      bearer: pass.bearer,
       repository: pond,
       scope: "read",
     });
-    expect(grant).toMatchObject({ scope: "read", gitAccess: readAccess });
-    if (grant === null) throw new Error("Read pass refused");
+    expect(credential).toMatchObject({
+      invocationId: "read-command",
+      grant: { scope: "read", gitAccess: readAccess },
+    });
+    if (credential === null) throw new Error("Read pass refused");
     // A read pass attests no branch ceiling: it can never become a writer.
-    expect(workflowGitPassWriter(grant)).toEqual({
+    expect(workflowGitPassWriter(credential.grant)).toEqual({
       kind: "actor",
       actor: workflow.armedBy,
     });
     expect(
-      f.store.admit({ passId: pass.passId, repository: pond, scope: "write" }),
+      await f.store.admit({
+        bearer: pass.bearer,
+        repository: pond,
+        scope: "write",
+      }),
     ).toBeNull();
     expect(
-      f.store.admit({ passId: pass.passId, repository: other, scope: "read" }),
+      await f.store.admit({
+        bearer: pass.bearer,
+        repository: other,
+        scope: "read",
+      }),
     ).toBeNull();
     at = pass.expiresAt;
     expect(
-      f.store.admit({ passId: pass.passId, repository: pond, scope: "read" }),
+      await f.store.admit({
+        bearer: pass.bearer,
+        repository: pond,
+        scope: "read",
+      }),
     ).toBeNull();
   } finally {
     f.database.close();
@@ -147,20 +166,22 @@ it("never lets a grant claim a scope wider than its admitted access", () => {
 it("ends a read pass with its run", async () => {
   const f = readPassOwner(() => 1000);
   try {
-    const pass = await f.owner.openWorkflowPass(f.context, {
+    const grant = await f.owner.admitWorkflowGit(f.context, {
       installationId: "shed-a",
       method: "runCommand",
     });
+    const pass = await f.store.issue("read-command", grant);
     f.store.revokeWorkflowRunGitPasses({ teamId: "owner", runId: "run" });
     expect(
-      f.store.admit({ passId: pass.passId, repository: pond, scope: "read" }),
-    ).toBeNull();
-    await expect(
-      f.owner.openWorkflowPass(f.context, {
-        installationId: "shed-a",
-        method: "runCommand",
+      await f.store.admit({
+        bearer: pass.bearer,
+        repository: pond,
+        scope: "read",
       }),
-    ).rejects.toThrow("denied");
+    ).toBeNull();
+    await expect(f.store.issue("later-command", grant)).rejects.toThrow(
+      "denied",
+    );
   } finally {
     f.database.close();
   }

@@ -151,6 +151,7 @@ export function createWorkflowSchedules(options: {
         .filter((record) => record.installationId === installationId)
         .map((record) => ({
           scheduleId: record.id,
+          installationId: record.installationId,
           workflowId: record.workflowId,
           triggerId: record.triggerId,
           nextDueAt: record.nextDueAt,

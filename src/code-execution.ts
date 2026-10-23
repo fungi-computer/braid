@@ -28,6 +28,8 @@ const failureCode = (failure: SandboxFailure): CodeFailure => {
       return "guest_exception";
     case "DeadlineExceeded":
       return "deadline_exceeded";
+    case "SandboxBusy":
+      return "sandbox_failed";
     case "Cancelled":
       return "cancelled";
     case "ResultNotJson":

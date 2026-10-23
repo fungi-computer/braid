@@ -19,7 +19,7 @@ const unusedBinding = (): never => {
   throw new Error("Unexpected host port");
 };
 
-it("preserves the original publication digest through cache recreation and starts without opening Git", async () => {
+it("preserves publication pins across restart and refuses a revoked binding after capture without revoking another binding", async () => {
   const definition: WorkflowDefinition = {
     format: "fungi.workflow/v1",
     title: "Ordered result",
@@ -64,6 +64,8 @@ it("preserves the original publication digest through cache recreation and start
   };
   let memberActive = true;
   let revokeDuringCapture = false;
+  let bindingActive = true;
+  let revokeBindingDuringCapture = false;
   const preparations: WorkflowRunPreparation[] = [];
   const capture = createWorkflowCeilingCapture({
     node: unusedBinding,
@@ -90,6 +92,7 @@ it("preserves the original publication digest through cache recreation and start
       preparations.push(preparation);
       const ceiling = await capture(preparation, actor, member);
       if (revokeDuringCapture) memberActive = false;
+      if (revokeBindingDuringCapture) bindingActive = false;
       return ceiling;
     },
     denied: () => new Error("denied"),
@@ -186,6 +189,77 @@ it("preserves the original publication digest through cache recreation and start
     expect(restored.graph.read(refusedIdentity.runId)).toBeNull();
     memberActive = true;
     revokeDuringCapture = false;
+    revokeBindingDuringCapture = true;
+    const revokedBinding = await restored.startCachedGraph(
+      binding,
+      { requestId: "revoked-binding-start", input: {} },
+      {
+        admitBinding: () => {
+          expect(database.isTransaction).toBe(true);
+          return bindingActive;
+        },
+      },
+    );
+    expect(revokedBinding).toEqual({
+      kind: "refused",
+      reason: "Trigger binding is no longer armed",
+    });
+    const revokedBindingIdentity = await memberRunIdentity(
+      "team-a",
+      "member-a",
+      "revoked-binding-start",
+    );
+    expect(restored.graph.read(revokedBindingIdentity.runId)).toBeNull();
+    // Distinct bindings can share a publication/cache entry. Revoking the
+    // first binding must not invalidate that entry or refuse the second.
+    revokeBindingDuringCapture = false;
+    const reserved = restored.reserveWebhookDelivery({
+      scope: {
+        installationId: binding.installationId,
+        workflowId: binding.workflowId,
+        commit: binding.commit,
+        triggerId: binding.triggerId,
+      },
+      delivery: {
+        host: "oyster",
+        tenant: "owner",
+        bindingId: "other",
+        eventId: "event",
+      },
+      cargo: {},
+      limits: { hostConcurrency: 20, bindingConcurrency: 1 },
+    });
+    if (reserved.kind === "refused") throw new Error("Reservation refused");
+    const otherBinding = await restored.startCachedGraph(
+      binding,
+      { requestId: "other-binding-start", input: {} },
+      { admitBinding: () => true, reservationId: reserved.reservationId },
+    );
+    expect(otherBinding.kind).toBe("started");
+    if (otherBinding.kind !== "started")
+      throw new Error("Expected admitted run");
+    expect(
+      restored.pendingWebhookDeliveries({ host: "oyster", tenant: "owner" }),
+    ).toEqual([
+      {
+        kind: "launch",
+        reservationId: reserved.reservationId,
+        runId: otherBinding.runId,
+      },
+    ]);
+    await expect(
+      restored.startCachedGraph(
+        binding,
+        { requestId: "missing-reservation", input: {} },
+        { admitBinding: () => true, reservationId: "missing" },
+      ),
+    ).rejects.toThrow("Trigger reservation binding conflict");
+    const missingIdentity = await memberRunIdentity(
+      "team-a",
+      "member-a",
+      "missing-reservation",
+    );
+    expect(restored.graph.read(missingIdentity.runId)).toBeNull();
     restored.triggerPlans.refuse(
       binding,
       "Workflow changed; re-arm after publishing",

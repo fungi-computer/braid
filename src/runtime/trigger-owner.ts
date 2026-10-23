@@ -41,6 +41,7 @@ import type {
   WorkflowPublicationContext,
   WorkflowTriggerRunPorts,
   WorkflowErrorPort,
+  WorkflowTriggerAdmission,
 } from "./ports.js";
 
 const id = z.string().min(1).max(256);
@@ -345,7 +346,12 @@ export function createTeamWorkflowTriggers(options: {
           );
       }
     },
-    async fire(raw: ArmedWorkflowTrigger, scope: string, event: TriggerEvent) {
+    async fire(
+      raw: ArmedWorkflowTrigger,
+      scope: string,
+      event: TriggerEvent,
+      admission?: WorkflowTriggerAdmission,
+    ) {
       const binding = armedWorkflowTriggerSchema.parse(raw);
       try {
         const current = await options.admit(
@@ -403,6 +409,7 @@ export function createTeamWorkflowTriggers(options: {
           mapped.repository === undefined
             ? request
             : { ...request, triggerRepository: mapped.repository },
+          admission,
         );
         if (result.kind === "refused") return result;
         if (result.kind === "conflict")

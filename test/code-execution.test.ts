@@ -1,7 +1,11 @@
 import { expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import * as S from "effect/Schema";
-import { GuestThrew, type Sandbox } from "@fungi.computer/mycelium";
+import {
+  GuestThrew,
+  SandboxBusy,
+  type Sandbox,
+} from "@fungi.computer/mycelium";
 import { executeCode } from "../src/code-execution.js";
 import { codeNodeSchema } from "../src/schema.js";
 
@@ -65,4 +69,22 @@ it("checkpoints a closed refusal without retaining a guest exception or source",
       }),
     ),
   ).toEqual({ kind: "refused", code: "guest_exception" });
+});
+
+it("returns a closed refusal for sandbox contention without retrying", async () => {
+  let calls = 0;
+  const sandbox: Sandbox = {
+    execute: () => {
+      calls++;
+      return Promise.reject(new SandboxBusy({ capacity: 2, waitedMs: 5000 }));
+    },
+  };
+  expect(
+    await Effect.runPromise(
+      executeCode({ sandbox, timeoutMs: 17003 }, node, "run:copy:0", {
+        name: "Garden",
+      }),
+    ),
+  ).toEqual({ kind: "refused", code: "sandbox_failed" });
+  expect(calls).toBe(1);
 });
