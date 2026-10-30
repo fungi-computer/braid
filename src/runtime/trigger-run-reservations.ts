@@ -1,5 +1,5 @@
 import { defineIdFamily } from "@fungi.computer/cairn/id";
-import { z } from "zod";
+import * as z from "zod";
 import type { WatchdogSqliteOwner } from "@fungi.computer/watchdog";
 import { gitSha1Schema } from "@fungi.computer/puffball/git-representation";
 import { workflowIdSchema } from "../index.js";

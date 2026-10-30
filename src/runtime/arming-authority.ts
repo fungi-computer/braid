@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { WorkflowRunMember } from "./run-authority.js";
 import { decodeWorkflowRunMember } from "./run-member.js";
 

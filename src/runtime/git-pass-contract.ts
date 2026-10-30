@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { GitWriter } from "@fungi.computer/agar/git";
 
 import { workflowAttestationSchema } from "@fungi.computer/puffball/app-method-runtime";

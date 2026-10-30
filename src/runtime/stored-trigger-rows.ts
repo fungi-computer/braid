@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { WatchdogSqliteOwner } from "@fungi.computer/watchdog";
 
 const rowSchema = z.strictObject({ id: z.string(), record: z.string() });
@@ -18,6 +18,18 @@ export function storedTriggerRows<Record extends z.ZodType>(
   return {
     all: () =>
       sql.exec(`${select} ORDER BY ${table.key}`).toArray().map(decode),
+    /** Filter and bound in SQLite, before decoding records into the owner. */
+    installationPage(installationId: string, after: string, limit: number) {
+      return sql
+        .exec(
+          `${select} WHERE json_extract(record, '$.installationId')=? AND ${table.key}>? ORDER BY ${table.key} LIMIT ?`,
+          installationId,
+          after,
+          limit,
+        )
+        .toArray()
+        .map(decode);
+    },
     read(id: string) {
       const row = sql.exec(`${select} WHERE ${table.key}=?`, id).toArray()[0];
       return row === undefined ? null : decode(row);

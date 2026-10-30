@@ -5,7 +5,7 @@ import {
   type NodeEvent,
   type NodeAdmissionResult,
 } from "../execution.js";
-import { z } from "zod";
+import * as z from "zod";
 import {
   bindingsSelectionSchema,
   workflowBindingSchema,

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import * as Result from "effect/Result";
 import {
   afterAdmitted,
@@ -24,6 +24,15 @@ import {
   type createTeamWorkflowTriggers,
 } from "./trigger-owner.js";
 import { storedTriggerRows } from "./stored-trigger-rows.js";
+
+/** Installation-scoped keyset read; the default and ceiling bound one reply. */
+export const workflowScheduleListInputSchema = z.strictObject({
+  limit: z.number().int().min(1).max(100).default(50),
+  after: z.string().min(1).max(256).optional(),
+});
+export type WorkflowScheduleListInput = z.input<
+  typeof workflowScheduleListInputSchema
+>;
 
 const recordSchema = armedWorkflowTriggerSchema.extend({
   id: z.string().min(1).max(256),
@@ -63,15 +72,15 @@ export function createWorkflowSchedules(options: {
     key: "scheduleId",
     record: recordSchema,
   });
-  const records = () =>
-    rows.all().map((record) => {
-      if (record.state !== "active") return record;
-      const reason = options.triggers.refusal(bindingOf(record));
-      if (reason === null) return record;
-      const next = { ...paused(record), lastError: reason, retryAt: null };
-      store(next);
-      return next;
-    });
+  const refresh = (record: z.infer<typeof recordSchema>) => {
+    if (record.state !== "active") return record;
+    const reason = options.triggers.refusal(bindingOf(record));
+    if (reason === null) return record;
+    const next = { ...paused(record), lastError: reason, retryAt: null };
+    store(next);
+    return next;
+  };
+  const records = () => rows.all().map(refresh);
   const nextWake = () => {
     const due = records()
       .filter((record) => record.state === "active")
@@ -142,14 +151,24 @@ export function createWorkflowSchedules(options: {
       await options.wake(nextWake());
       return { kind: "armed" as const, scheduleId: id };
     },
-    async list(principal: WorkflowTriggerPrincipal, installationId: string) {
+    async list(
+      principal: WorkflowTriggerPrincipal,
+      installationId: string,
+      input: WorkflowScheduleListInput,
+    ) {
       await options.authorize(
         workflowTriggerPrincipalMember(principal),
         installationId,
       );
-      return records()
-        .filter((record) => record.installationId === installationId)
-        .map((record) => ({
+      const page = workflowScheduleListInputSchema.parse(input);
+      const selected = rows.installationPage(
+        installationId,
+        page.after ?? "",
+        page.limit + 1,
+      );
+      const visible = selected.slice(0, page.limit).map(refresh);
+      return {
+        schedules: visible.map((record) => ({
           scheduleId: record.id,
           installationId: record.installationId,
           workflowId: record.workflowId,
@@ -157,7 +176,34 @@ export function createWorkflowSchedules(options: {
           nextDueAt: record.nextDueAt,
           state: record.state,
           lastError: record.lastError,
-        }));
+        })),
+        nextCursor:
+          selected.length > page.limit ? (visible.at(-1)?.id ?? null) : null,
+      };
+    },
+    /** Pause future admission only; accepted runs and the compiled plan remain owned. */
+    async pause(
+      principal: WorkflowTriggerPrincipal,
+      installationId: string,
+      scheduleId: string,
+    ) {
+      await options.authorize(
+        workflowTriggerPrincipalMember(principal),
+        installationId,
+      );
+      const record = rows.read(scheduleId);
+      if (
+        record?.installationId !== installationId ||
+        !workflowTriggerControlledBy(principal, record) ||
+        record.state === "cancelled" ||
+        record.state === "finished"
+      )
+        return { kind: "not_found" as const };
+      await options.commit(() => {
+        store({ ...paused(record), retryAt: null });
+      });
+      await options.wake(nextWake());
+      return { kind: "paused" as const };
     },
     async disarm(
       principal: WorkflowTriggerPrincipal,
@@ -197,6 +243,12 @@ export function createWorkflowSchedules(options: {
               scheduledAt: new Date(record.nextDueAt).toISOString(),
               eventId: occurrenceKey(record),
             },
+            {
+              // The existing run owner checks this in its durable-start
+              // transaction, after authority I/O and before accepting work.
+              admitBinding: () =>
+                JSON.stringify(rows.read(record.id)) === JSON.stringify(record),
+            },
           );
           next =
             result.kind === "refused"
@@ -211,7 +263,7 @@ export function createWorkflowSchedules(options: {
           );
           next = { ...refused.schedule, retryAt: refused.retryAt };
         }
-        // A disarm or re-arm admitted during upstream I/O wins over this firing.
+        // A pause, disarm or re-arm during upstream I/O wins over this firing.
         sql.exec(
           "UPDATE hub_workflow_schedules SET record=? WHERE scheduleId=? AND record=?",
           JSON.stringify(recordSchema.parse(next)),

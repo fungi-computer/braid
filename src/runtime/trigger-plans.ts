@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import * as S from "effect/Schema";
 import type { WatchdogSqliteOwner } from "@fungi.computer/watchdog";
 import {

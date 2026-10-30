@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { canonicalJson, contentDigest } from "../index.js";
 import type { WatchdogSqliteOwner } from "@fungi.computer/watchdog";
 import {

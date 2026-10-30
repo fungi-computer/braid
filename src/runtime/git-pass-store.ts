@@ -3,7 +3,7 @@ import {
   type RepositoryRef,
 } from "@fungi.computer/agar/git";
 import type { WatchdogSqliteOwner } from "@fungi.computer/watchdog";
-import { z } from "zod";
+import * as z from "zod";
 import { canonicalJson } from "../index.js";
 import {
   formatWorkflowGitPassToken,
