@@ -206,6 +206,95 @@ it("manual pause survives reopening, retains an accepted run and history, and st
   }
 });
 
+it("resume skips missed occurrences, survives reopening, and wakes the next run", async () => {
+  const f = await fixture();
+  try {
+    const armed = await f.arm();
+    if (armed.kind !== "armed") throw new Error("Schedule not armed");
+    await f.schedules.pause(member, "workflows-a", armed.scheduleId);
+    f.clock.now = at("20");
+    expect(
+      await f.open().resume(member, "workflows-a", armed.scheduleId),
+    ).toEqual({ kind: "resumed" });
+    expect(await f.open().list(member, "workflows-a", {})).toEqual({
+      schedules: [
+        expect.objectContaining({
+          state: "active",
+          cron: { expression: "*/5 * * * *", timeZone: "UTC" },
+          nextDueAt: at("25"),
+          lastError: null,
+        }),
+      ],
+      nextCursor: null,
+    });
+    expect(f.clock.wake).toBe(at("25"));
+    await f.schedules.fireDue();
+    expect(f.instances.size).toBe(0);
+    f.clock.now = at("25");
+    await f.schedules.fireDue();
+    expect(f.instances.size).toBe(1);
+  } finally {
+    f.close();
+  }
+});
+
+it("resume requires a paused registration, installation access, and control of the armer", async () => {
+  const f = await fixture();
+  try {
+    const human = await f.arm();
+    const agent = await f.arm({
+      armedBy: "owner",
+      armedVia: {
+        kind: "policy",
+        agentId: "agent-a",
+        policyRevision: "approval:1",
+        grantorMemberId: "owner",
+      },
+    });
+    if (human.kind !== "armed" || agent.kind !== "armed")
+      throw new Error("Schedule not armed");
+    expect(
+      await f.schedules.resume(member, "workflows-a", agent.scheduleId),
+    ).toEqual({ kind: "not_found" });
+    await f.schedules.pause(member, "workflows-a", human.scheduleId);
+    await f.schedules.pause(member, "workflows-a", agent.scheduleId);
+    const principal: WorkflowTriggerPrincipal = {
+      kind: "agent",
+      agentId: "agent-a",
+      grantorMemberId: "owner",
+    };
+    expect(
+      await f.schedules.resume(principal, "workflows-a", human.scheduleId),
+    ).toEqual({ kind: "not_found" });
+    expect(
+      await f.schedules.resume(
+        principal,
+        "other-installation",
+        agent.scheduleId,
+      ),
+    ).toEqual({ kind: "not_found" });
+    await expect(
+      f.schedules.resume(
+        { kind: "member", memberId: "denied" },
+        "workflows-a",
+        agent.scheduleId,
+      ),
+    ).rejects.toThrow("denied");
+    expect(
+      await f.schedules.resume(principal, "workflows-a", agent.scheduleId),
+    ).toEqual({ kind: "resumed" });
+    expect(
+      await f.schedules.resume(principal, "workflows-a", agent.scheduleId),
+    ).toEqual({ kind: "not_found" });
+    await f.schedules.disarm(member, "workflows-a", human.scheduleId);
+    expect(
+      await f.schedules.resume(member, "workflows-a", human.scheduleId),
+    ).toEqual({ kind: "not_found" });
+  } finally {
+    f.close();
+  }
+});
+
 it("reads a bounded installation page and continues strictly after its last schedule", async () => {
   const f = await fixture();
   try {

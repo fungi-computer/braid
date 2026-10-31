@@ -1,5 +1,20 @@
 # @fungi.computer/braid
 
+## 0.4.0
+
+### Minor Changes
+
+- Changes since 0.3.0:
+
+  - feat(schedules): resume paused schedules through native owners
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/puffball@0.4.0
+  - @fungi.computer/agar@0.6.1
+  - @fungi.computer/mycelium@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

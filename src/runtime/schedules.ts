@@ -7,6 +7,7 @@ import {
   nextOccurrence,
   occurrenceKey,
   paused,
+  resumed,
   cancelled,
 } from "@fungi.computer/almanac";
 import { canonicalJson, contentDigest } from "../index.js";
@@ -173,6 +174,7 @@ export function createWorkflowSchedules(options: {
           installationId: record.installationId,
           workflowId: record.workflowId,
           triggerId: record.triggerId,
+          cron: record.cron,
           nextDueAt: record.nextDueAt,
           state: record.state,
           lastError: record.lastError,
@@ -204,6 +206,32 @@ export function createWorkflowSchedules(options: {
       });
       await options.wake(nextWake());
       return { kind: "paused" as const };
+    },
+    /** Resume from the next occurrence; Almanac owns missed-run and retry semantics. */
+    async resume(
+      principal: WorkflowTriggerPrincipal,
+      installationId: string,
+      scheduleId: string,
+    ) {
+      await options.authorize(
+        workflowTriggerPrincipalMember(principal),
+        installationId,
+      );
+      const record = rows.read(scheduleId);
+      if (
+        record?.installationId !== installationId ||
+        !workflowTriggerControlledBy(principal, record) ||
+        record.state !== "paused"
+      )
+        return { kind: "not_found" as const };
+      const next = resumed(record, options.now());
+      if (Result.isFailure(next))
+        return { kind: "refused" as const, reason: next.failure.message };
+      await options.commit(() => {
+        store({ ...next.success, retryAt: null });
+      });
+      await options.wake(nextWake());
+      return { kind: "resumed" as const };
     },
     async disarm(
       principal: WorkflowTriggerPrincipal,
