@@ -1,4 +1,22 @@
-# Braid
+# Braid (`@fungi.computer/braid`)
+
+Braid runs workflows: typed graphs of App methods with reviews, repeats and
+triggers. It validates and compiles a `fungi.workflow/v1` graph to a plan and
+executes it on Cloudflare Workflows.
+[Trellis](https://github.com/fungi-computer/trellis) is the editor and App built
+on it.
+
+## Install
+
+```sh
+npm install @fungi.computer/braid
+```
+
+The root entry is browser-safe: validation, compilation and portable execution
+contracts. `@fungi.computer/braid/cloudflare` is the Workers engine and
+`@fungi.computer/braid/runtime` the host's saved-run store.
+
+## Validate and compile
 
 Braid owns `fungi.workflow/v1` and its graph interpreter. The browser-safe root
 exports validation, compilation, and portable execution contracts.
@@ -13,40 +31,6 @@ Compilation grants no authority.
 `catalogMethods` omits declarations marked `hidden: true` before reading their
 graph ports. Visible method digests remain unchanged; the discovery marker does
 not decide direct-call permissions.
-
-## Workers engine
-
-`@fungi.computer/braid/cloudflare` exports `GraphWorkflow` and
-`GraphWorkflowBindings`. A host subclasses the base, supplies its
-`GRAPH_WORKFLOWS` binding, and implements `dispatcher(params)` and
-`terminalTriggerRun(params)`. The dispatcher loads the host's admitted plan,
-invokes App methods, records node events, and persists review waits. A host
-admitting Code also overrides `codeExecution()` with its actual Mycelium
-`Sandbox` and an explicitly captured `timeoutMs`. Hosts without this port refuse
-Code with `code_execution_unavailable`. Hub and standalone hosts give Workflow
-data transforms a 30,000 ms budget; this is independent of Agent policy. Local
-workerd hosts set `WORKFLOW_CODE_LOCAL_DEV=true` to report that CPU limits are
-not enforced; celld and deployed Workers forward the budget to the Loader.
-Terminal cleanup runs through the host callback; Braid does not own grants, run
-storage, Git admission, trigger reservations, cancellation requests, or
-outboxes.
-
-The root exports `GraphParams`, `NodeDispatcher`, `NodeCall`, `NodeEvent`,
-`GraphReview`, `DispatchResult`, and their wire decoders without importing a
-Workers runtime. App pending calls retain their stable idempotency key while
-each poll has a distinct event identity. Retry attempts remain local to a poll.
-Hosts must re-admit App calls using their own stored authority.
-
-The portable root is checked with `skipLibCheck: false`. The Workers build
-retains the Hub's existing `skipLibCheck: true`: Effect 4.0.2's `KeyValueStore`
-declaration refers to DOM `Storage`, which the Workers type environment does not
-provide. No ambient compatibility declaration is added; the native runtime tests
-exercise the actual Workers implementation.
-
-The Hub adapter consumes this same engine. Its native graph tests cover branch
-selection, Pending polls, reviews, maps, and terminal cancellation. Those tests
-establish Hub behavior; a standalone host must qualify its own bindings and
-admission ports.
 
 ## V1 contract
 
@@ -187,6 +171,85 @@ admission ports.
   enum for checking, while the digest retains the original schema. Schedule and
   webhook mapping behavior is unchanged.
 
+## Bounded Repeat
+
+A Repeat node declares `{id, kind: "repeat", body, maxRounds, until}`.
+`maxRounds` is an integer from one to five. The body receives `item` from the
+enclosing graph input, a zero-based `round`, and `previous`: an empty object on
+the first round, then the preceding body output. The stop predicate reads the
+completed body output through `$input`. It cannot reach into another graph.
+
+When the predicate becomes true, the node emits the body output on `result`.
+When all rounds finish without satisfying it, the node emits the last output on
+`exhausted`. The other outlet stays inactive. Both paths emit `after`; failed
+children fail the Repeat rather than fabricating a successful result.
+
+Validation checks body input and output compatibility, references, recursive
+groups, and the bounded execution budget. The Cloudflare interpreter runs each
+round as a durable child with its own review identity and passes saved feedback
+into the next round. Map items retain their order when their bodies contain a
+Repeat. `apps/hub/test/graph-workflow-repeat.native.mjs` exercises the real
+engine and run owner with a fixture App dispatcher; it calls no media provider.
+
+## Workers engine
+
+`@fungi.computer/braid/cloudflare` exports `GraphWorkflow` and
+`GraphWorkflowBindings`. A host subclasses the base, supplies its
+`GRAPH_WORKFLOWS` binding, and implements `dispatcher(params)` and
+`terminalTriggerRun(params)`. The dispatcher loads the host's admitted plan,
+invokes App methods, records node events, and persists review waits. A host
+admitting Code also overrides `codeExecution()` with its actual Mycelium
+`Sandbox` and an explicitly captured `timeoutMs`. Hosts without this port refuse
+Code with `code_execution_unavailable`. Hub and standalone hosts give Workflow
+data transforms a 30,000 ms budget; this is independent of Agent policy. Local
+workerd hosts set `WORKFLOW_CODE_LOCAL_DEV=true` to report that CPU limits are
+not enforced; celld and deployed Workers forward the budget to the Loader.
+Terminal cleanup runs through the host callback; Braid does not own grants, run
+storage, Git admission, trigger reservations, cancellation requests, or
+outboxes.
+
+The root exports `GraphParams`, `NodeDispatcher`, `NodeCall`, `NodeEvent`,
+`GraphReview`, `DispatchResult`, and their wire decoders without importing a
+Workers runtime. App pending calls retain their stable idempotency key while
+each poll has a distinct event identity. Retry attempts remain local to a poll.
+Hosts must re-admit App calls using their own stored authority.
+
+The portable root is checked with `skipLibCheck: false`. The Workers build
+retains the Hub's existing `skipLibCheck: true`: Effect 4.0.2's `KeyValueStore`
+declaration refers to DOM `Storage`, which the Workers type environment does not
+provide. No ambient compatibility declaration is added; the native runtime tests
+exercise the actual Workers implementation.
+
+The Hub adapter consumes this same engine. Its native graph tests cover branch
+selection, Pending polls, reviews, maps, and terminal cancellation. Those tests
+establish Hub behavior; a standalone host must qualify its own bindings and
+admission ports.
+
+## Host runtime
+
+`@fungi.computer/braid/runtime` owns the saved graph run, node event and review
+records. Hosts provide the Watchdog SQLite owner to `createGraphWorkflowRuns`;
+the store preserves immutable plans, idempotent starts and accepted review
+answers across owner recreation. `resolveWorkflowNode` and `planNodeCall`
+resolve calls against that saved plan. Hosts retain membership, installation,
+Git and native Workflow admission and delivery. Stored rows alone grant no
+permission to run an App method or answer a review.
+
+The runtime entrypoint also owns `createTeamWorkflowTriggers`,
+`createWorkflowSchedules`, `createWorkflowEventRouter`, immutable trigger plans
+and run reservations. Hosts supply publication resolution, existing denial
+errors, live authorization, transaction and alarm ports; the runtime owns saved
+trigger state and occurrence identity. `PublishedDefinitionPort` resolves an
+exact version or commit with host-issued access. A copied document never grants
+that access.
+
+A review answer is `{approved: boolean}` or `{choice: string, note?: string}`.
+Choice notes are bounded to 1,000 characters. A completed review retains the
+shown item on its selected outcome port and also emits `choice` (the actual
+selected outcome) and `note` (an empty string when absent). Those two ports and
+`after` are reserved and cannot be named choices. Downstream nodes can use these
+saved outputs, including a subsequent Repeat round.
+
 ## Schema scope
 
 App projections have the same 20 KB / depth-16 envelope as T1. V1 accepts the
@@ -215,47 +278,6 @@ animate choices, keep/reject, declared refusal, Pending replay, and raw
 scalar/array method values through the native graph engine; it makes no provider
 calls.
 
-## Host runtime
+## License
 
-`@fungi.computer/braid/runtime` owns the saved graph run, node event and review
-records. Hosts provide the Watchdog SQLite owner to `createGraphWorkflowRuns`;
-the store preserves immutable plans, idempotent starts and accepted review
-answers across owner recreation. `resolveWorkflowNode` and `planNodeCall`
-resolve calls against that saved plan. Hosts retain membership, installation,
-Git and native Workflow admission and delivery. Stored rows alone grant no
-permission to run an App method or answer a review.
-
-The runtime entrypoint also owns `createTeamWorkflowTriggers`,
-`createWorkflowSchedules`, `createWorkflowEventRouter`, immutable trigger plans
-and run reservations. Hosts supply publication resolution, existing denial
-errors, live authorization, transaction and alarm ports; the runtime owns saved
-trigger state and occurrence identity. `PublishedDefinitionPort` resolves an
-exact version or commit with host-issued access. A copied document never grants
-that access.
-
-A review answer is `{approved: boolean}` or `{choice: string, note?: string}`.
-Choice notes are bounded to 1,000 characters. A completed review retains the
-shown item on its selected outcome port and also emits `choice` (the actual
-selected outcome) and `note` (an empty string when absent). Those two ports and
-`after` are reserved and cannot be named choices. Downstream nodes can use these
-saved outputs, including a subsequent Repeat round.
-
-## Bounded Repeat
-
-A Repeat node declares `{id, kind: "repeat", body, maxRounds, until}`.
-`maxRounds` is an integer from one to five. The body receives `item` from the
-enclosing graph input, a zero-based `round`, and `previous`: an empty object on
-the first round, then the preceding body output. The stop predicate reads the
-completed body output through `$input`. It cannot reach into another graph.
-
-When the predicate becomes true, the node emits the body output on `result`.
-When all rounds finish without satisfying it, the node emits the last output on
-`exhausted`. The other outlet stays inactive. Both paths emit `after`; failed
-children fail the Repeat rather than fabricating a successful result.
-
-Validation checks body input and output compatibility, references, recursive
-groups, and the bounded execution budget. The Cloudflare interpreter runs each
-round as a durable child with its own review identity and passes saved feedback
-into the next round. Map items retain their order when their bodies contain a
-Repeat. `apps/hub/test/graph-workflow-repeat.native.mjs` exercises the real
-engine and run owner with a fixture App dispatcher; it calls no media provider.
+MIT. See [`LICENSE`](LICENSE).
