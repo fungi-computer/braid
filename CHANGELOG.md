@@ -1,5 +1,12 @@
 # @fungi.computer/braid
 
+## 0.4.10
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/agar@0.10.1
+
 ## 0.4.9
 
 ### Patch Changes
