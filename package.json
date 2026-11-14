@@ -1,6 +1,6 @@
 {
   "name": "@fungi.computer/braid",
-  "version": "0.4.14",
+  "version": "0.4.15",
   "author": "Levi <levi@technomancy.dev>",
   "type": "module",
   "description": "Pure versioned Workflow graph validation and content-addressed compilation",
