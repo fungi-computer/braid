@@ -1,5 +1,23 @@
 # @fungi.computer/braid
 
+## 0.5.0
+
+### Minor Changes
+
+- Changes since 0.4.24:
+
+  - feat(braid): let a step carry its own title and note
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+  - @fungi.computer/agar@0.21.0
+  - @fungi.computer/gills@0.4.0
+  - @fungi.computer/puffball@0.11.0
+  - @fungi.computer/mycelium@0.4.4
+
 ## 0.4.24
 
 ### Patch Changes

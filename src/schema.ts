@@ -15,6 +15,13 @@ const count = (min: number, max: number) =>
     S.check(S.isInt()),
     S.check(S.isBetween({ minimum: min, maximum: max })),
   );
+/**
+ * Optional display fields every step may carry. A step's own `title` (120, the
+ * same bound as a review's question and a trigger's title) and `note` (500)
+ * are definition content: they change the plan's identity like any other field.
+ */
+const stepTitle = S.optionalKey(boundedString(120));
+const stepNote = S.optionalKey(boundedString(500));
 const array = <A extends S.Top>(schema: A, max: number) =>
   S.Array(schema).pipe(S.check(S.isMaxLength(max)));
 const record = <A extends S.Top>(schema: A) => S.Record(name, schema);
@@ -107,6 +114,8 @@ const duration = count(1, 7 * 24 * 60 * 60 * 1000);
 export const codeNodeSchema = S.Struct({
   id: name,
   kind: S.Literal("code"),
+  title: stepTitle,
+  note: stepNote,
   source: boundedString(256_000),
   input: projectionSchema,
   output: projectionSchema,
@@ -118,6 +127,8 @@ export const nodeSchema = S.Union([
   S.Struct({
     id: name,
     kind: S.Literal("app"),
+    title: stepTitle,
+    note: stepNote,
     app: name,
     method: boundedString(80),
     methodDigest: boundedString(128),
@@ -133,6 +144,7 @@ export const nodeSchema = S.Union([
     id: name,
     kind: S.Literal("review"),
     title: boundedString(120),
+    note: stepNote,
     /**
      * One plain line under the title saying where the run is, such as
      * `Beat {item} of {items} · try {try} of {tries}`. The placeholders are
@@ -159,10 +171,18 @@ export const nodeSchema = S.Union([
       ),
     ),
   }),
-  S.Struct({ id: name, kind: S.Literal("condition"), test: predicateSchema }),
+  S.Struct({
+    id: name,
+    kind: S.Literal("condition"),
+    title: stepTitle,
+    note: stepNote,
+    test: predicateSchema,
+  }),
   S.Struct({
     id: name,
     kind: S.Literal("map"),
+    title: stepTitle,
+    note: stepNote,
     over: portRefSchema,
     body: name,
     concurrency: count(1, 8),
@@ -171,15 +191,25 @@ export const nodeSchema = S.Union([
   S.Struct({
     id: name,
     kind: S.Literal("repeat"),
+    title: stepTitle,
+    note: stepNote,
     body: name,
     maxRounds: count(1, 5),
     /** The predicate reads the completed body's output through $input. */
     until: predicateSchema,
   }),
-  S.Struct({ id: name, kind: S.Literal("wait"), for: duration }),
+  S.Struct({
+    id: name,
+    kind: S.Literal("wait"),
+    title: stepTitle,
+    note: stepNote,
+    for: duration,
+  }),
   S.Struct({
     id: name,
     kind: S.Literal("transform"),
+    title: stepTitle,
+    note: stepNote,
     fields: record(mappingSchema),
   }),
 ]);
