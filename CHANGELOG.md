@@ -1,5 +1,13 @@
 # @fungi.computer/braid
 
+## 0.6.0
+
+### Minor Changes
+
+- Changes since 0.5.4:
+
+  - feat(trellis): test a saved draft as a Test run
+
 ## 0.5.4
 
 ### Patch Changes

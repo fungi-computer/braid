@@ -59,6 +59,16 @@ const graphPublicationSchema = S.Struct({
 });
 export type GraphPublication = typeof graphPublicationSchema.Type;
 /**
+ * A test run of an unpublished draft: the Workflow and the saved draft
+ * revision it ran. Only a member's raw start records one; a trigger or a
+ * published start never does.
+ */
+export const graphTestSchema = S.Struct({
+  workflowId: graphTriggerProvenanceSchema.fields.workflowId,
+  draftRevision: natural,
+});
+export type GraphTest = typeof graphTestSchema.Type;
+/**
  * The run's declared delivery: the Agent Session that receives its ending,
  * whoever started it. Declared at start or arming, never by a node.
  */
@@ -120,6 +130,7 @@ export const workflowRunSourceValues = [
   "event",
   "agent",
   "key",
+  "test",
 ] as const;
 export const workflowRunSourceSchema = S.Literals(workflowRunSourceValues);
 export type WorkflowRunSource = typeof workflowRunSourceSchema.Type;
@@ -137,12 +148,40 @@ export const graphRunSchema = S.Struct({
   ceiling: runCeilingSchema,
   trigger: S.optionalKey(graphTriggerProvenanceSchema),
   publication: S.optionalKey(graphPublicationSchema),
+  test: S.optionalKey(graphTestSchema),
   delivery: S.optionalKey(workflowRunDeliverySchema),
   /** Recorded once, from the admitted preparation; never recomputed later. */
   source: workflowRunSourceSchema,
   initiatedBy: workflowRunInitiatorSchema,
 });
 export type GraphRun = typeof graphRunSchema.Type;
+/**
+ * One run as a host lists it: a test names the draft revision it ran and has
+ * no commit; every other run names the published commit or trigger commit.
+ */
+export function wireRunRow(run: GraphRun & Readonly<{ startedAt: number }>) {
+  const common = {
+    runId: run.runId,
+    initiatedBy: wireRunInitiator(run.initiatedBy),
+    startedAt: run.startedAt,
+  };
+  if (run.test !== undefined)
+    return {
+      ...common,
+      workflowId: run.test.workflowId,
+      draftRevision: run.test.draftRevision,
+      source: run.source,
+    };
+  const row = {
+    ...common,
+    workflowId: run.publication?.workflowId ?? run.trigger?.workflowId,
+    commit: run.publication?.commit ?? run.trigger?.commit,
+    source: run.source,
+  };
+  return run.trigger === undefined
+    ? row
+    : { ...row, triggerId: run.trigger.triggerId };
+}
 /** Host-owned identity of one App node execution within a graph run. */
 export const graphNodeContextSchema = S.Struct({
   runId: id,

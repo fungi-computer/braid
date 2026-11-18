@@ -583,3 +583,98 @@ it("keeps a started publication after publish-only revocation but refuses absent
     f.close();
   }
 });
+
+const draftTest = { workflowId: "review", draftRevision: 3 };
+
+it("records a raw test start as source test under its library and workflow, with no publication", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.owner.startGraph(
+      "owner",
+      {
+        requestId: "draft-test",
+        definition: f.definition,
+        bindings: {},
+        input: {},
+        test: draftTest,
+      },
+      null,
+      "library",
+    );
+    if (result.kind !== "started") throw new Error("Test did not start");
+    const run = f.owner.graph.read(result.runId);
+    expect(run?.source).toBe("test");
+    expect(run?.test).toEqual(draftTest);
+    expect(run?.publication).toBeUndefined();
+    expect(run?.initiatedBy).toEqual({ kind: "member", memberId: "owner" });
+    expect(
+      f.owner.listRuns("library", undefined, "review").map((r) => r.runId),
+    ).toEqual([result.runId]);
+  } finally {
+    f.close();
+  }
+});
+
+it("refuses a test start with no library before recording anything", async () => {
+  const f = await fixture();
+  try {
+    await expect(
+      f.owner.startGraph(
+        "owner",
+        {
+          requestId: "no-library",
+          definition: f.definition,
+          bindings: {},
+          input: {},
+          test: draftTest,
+        },
+        null,
+      ),
+    ).rejects.toThrow("denied");
+    const identity = await memberRunIdentity("team", "owner", "no-library");
+    expect(f.owner.graph.read(identity.runId)).toBeNull();
+  } finally {
+    f.close();
+  }
+});
+
+it("never lets a member-compiled start or a trigger start produce a test run", async () => {
+  const f = await fixture();
+  try {
+    const compiled = await compile(f.definition, {}, {});
+    if (!compiled.ok) throw new Error("Fixture did not compile");
+    await expect(
+      f.owner.startMemberGraph("owner", {
+        runId: "member-test",
+        requestId: "member-test",
+        computerId: null,
+        plan: compiled.plan,
+        input: {},
+        test: draftTest,
+      }),
+    ).rejects.toThrow();
+    expect(f.owner.graph.read("member-test")).toBeNull();
+    const binding = {
+      installationId: "library",
+      workflowId: "review",
+      commit: "a".repeat(40),
+      digest: f.digest,
+      triggerId: "clock",
+      bindings: {},
+      armedBy: "owner",
+      ...memberArm,
+      computerId: "computer",
+    };
+    f.owner.triggerPlans.put(binding, compiled.plan);
+    const started = await f.owner.startCachedGraph(binding, {
+      requestId: "fired",
+      input: {},
+    });
+    if (started.kind !== "started") throw new Error("Trigger did not start");
+    const run = f.owner.graph.read(started.runId);
+    expect(run?.source).not.toBe("test");
+    expect(run?.test).toBeUndefined();
+  } finally {
+    f.close();
+  }
+});

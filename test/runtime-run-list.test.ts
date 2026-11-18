@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { fromNodeSqlite } from "@fungi.computer/watchdog/node-sqlite";
 import { compile, type ExecutionPlan } from "../src/index.js";
-import { createGraphWorkflowRuns } from "../src/runtime/index.js";
+import { createGraphWorkflowRuns, wireRunRow } from "../src/runtime/index.js";
 
 async function emptyPlan(title: string): Promise<ExecutionPlan> {
   const compiled = await compile(
@@ -237,6 +237,83 @@ it("treats a replay whose initiator or source differs as a conflict, not a repla
         },
       }),
     ).toBe("conflict");
+  } finally {
+    database.close();
+  }
+});
+
+it("lists a test run under its workflow with the draft revision and no commit, beside a stored pre-test row", async () => {
+  const plan = await emptyPlan("Tests");
+  const database = new DatabaseSync(":memory:");
+  try {
+    const owner = fromNodeSqlite(database);
+    const runs = createGraphWorkflowRuns(owner);
+    const base = {
+      teamId: "team",
+      actorId: "member-a",
+      computerId: null,
+      plan,
+      input: {},
+      ceiling: { nodes: [], nodeGitAccess: [] },
+      initiatedBy: { kind: "member" as const, memberId: "member-a" },
+      libraryInstallationId: "library-a",
+    };
+    // A row exactly as the code before test runs stored it: a publication,
+    // no `test` key, source manual. It must decode and list unchanged.
+    const old = {
+      ...base,
+      runId: "old-run",
+      requestId: "old-run",
+      source: "manual",
+      publication: {
+        installationId: "library-a",
+        workflowId: "echo",
+        commit: "a".repeat(40),
+        digest: "sha256:" + "a".repeat(64),
+        armedBy: { kind: "member", memberId: "member-a" },
+      },
+    };
+    owner.sql.exec(
+      "INSERT INTO hub_graph_runs(run_id,request_id,installation_id,workflow_id,actor_id,started_at,record) VALUES(?,?,?,?,?,?,?)",
+      "old-run",
+      "old-run",
+      "library-a",
+      "echo",
+      "member-a",
+      1,
+      JSON.stringify(old),
+    );
+    expect(
+      runs.startCompiled({
+        ...base,
+        runId: "test-run",
+        requestId: "test-run",
+        source: "test",
+        test: { workflowId: "echo", draftRevision: 4 },
+      }),
+    ).toBe("started");
+    const listed = runs.list({
+      installationId: "library-a",
+      workflowId: "echo",
+    });
+    expect(listed.map(wireRunRow)).toEqual([
+      {
+        runId: "test-run",
+        workflowId: "echo",
+        draftRevision: 4,
+        source: "test",
+        initiatedBy: { kind: "member", memberId: "member-a" },
+        startedAt: listed[0]?.startedAt,
+      },
+      {
+        runId: "old-run",
+        workflowId: "echo",
+        commit: "a".repeat(40),
+        source: "manual",
+        initiatedBy: { kind: "member", memberId: "member-a" },
+        startedAt: 1,
+      },
+    ]);
   } finally {
     database.close();
   }

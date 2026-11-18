@@ -109,7 +109,10 @@ export function createGraphWorkflowRuns(options: {
           run.libraryInstallationId ??
           run.trigger?.libraryInstallationId ??
           null,
-        run.publication?.workflowId ?? run.trigger?.workflowId ?? null,
+        run.publication?.workflowId ??
+          run.trigger?.workflowId ??
+          run.test?.workflowId ??
+          null,
         run.actorId,
         Date.now(),
         JSON.stringify(run),

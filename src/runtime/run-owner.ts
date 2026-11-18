@@ -29,6 +29,7 @@ import {
   type WorkflowRunContext,
   type GraphRun,
   type GraphPublication,
+  type GraphTest,
   type GraphTriggerProvenance,
   type WorkflowRunDelivery,
 } from "./graph-contract.js";
@@ -55,6 +56,7 @@ export const memberCompiledGraphStartSchema = graphRunSchema.mapFields(
     "actorId",
     "trigger",
     "publication",
+    "test",
     "ceiling",
     "libraryInstallationId",
     "source",
@@ -181,6 +183,7 @@ export function createTeamWorkflowRuns(options: {
     trigger?: GraphTriggerProvenance,
     publication?: GraphPublication,
     libraryInstallationId?: string,
+    test?: GraphTest,
   ) => {
     const memberId =
       preparation.initiatedBy.kind === "member"
@@ -207,6 +210,7 @@ export function createTeamWorkflowRuns(options: {
       run = { ...run, trigger: provenance };
     }
     if (publication !== undefined) run = { ...run, publication };
+    if (test !== undefined) run = { ...run, test };
     if (libraryInstallationId !== undefined)
       run = { ...run, libraryInstallationId };
     if (request.delivery !== undefined)
@@ -506,6 +510,9 @@ export function createTeamWorkflowRuns(options: {
         onExcessProperty: "error",
       });
       requireDeliveryLibrary(request.delivery, libraryInstallationId);
+      // A test is listed and reviewed under its library; no library, no test.
+      if (request.test !== undefined && libraryInstallationId === undefined)
+        throw options.errors.app("denied");
       await admitGraphMember(memberId, computerId, request.delivery);
       const entries = await options.catalog(memberId);
       let publication: GraphPublication | undefined;
@@ -546,7 +553,7 @@ export function createTeamWorkflowRuns(options: {
       );
       let preparation: WorkflowRunPreparation = {
         initiatedBy: { kind: "member", memberId },
-        source: "manual",
+        source: request.test === undefined ? "manual" : "test",
         computerId,
         plan: compiled.plan,
       };
@@ -569,6 +576,7 @@ export function createTeamWorkflowRuns(options: {
         undefined,
         publication,
         libraryInstallationId,
+        request.test,
       );
     },
     async startCachedGraph(

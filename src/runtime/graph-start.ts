@@ -19,7 +19,10 @@ import {
   workflowDefinitionSchema,
 } from "../index.js";
 import type { WorkflowCatalogEntry } from "./ports.js";
-import { workflowRunDeliverySchema } from "./graph-contract.js";
+import {
+  graphTestSchema,
+  workflowRunDeliverySchema,
+} from "./graph-contract.js";
 
 const id = S.String.pipe(
   S.check(S.isMinLength(1)),
@@ -49,15 +52,27 @@ const startFields = {
   /** Where the run's ending is reported; absent reports nowhere. */
   delivery: S.optionalKey(workflowRunDeliverySchema),
 };
-/** Published starts retain the original document and its concrete stored row identity. */
+/**
+ * Published starts retain the original document and its concrete stored row
+ * identity. A test start runs a saved, unpublished draft and names it; it
+ * never carries a publication.
+ */
 export const graphStartRequestSchema = S.Union([
   S.Struct({
     ...startFields,
     definition: S.Unknown,
     published: S.optionalKey(S.Never),
+    test: S.optionalKey(S.Never),
   }),
   S.Struct({
     ...startFields,
+    definition: S.Unknown,
+    published: S.optionalKey(S.Never),
+    test: graphTestSchema,
+  }),
+  S.Struct({
+    ...startFields,
+    test: S.optionalKey(S.Never),
     definition: S.Json,
     published: S.declare(
       (
@@ -83,7 +98,7 @@ export type GraphCompileResult =
  */
 export async function compileForMember(
   entries: readonly WorkflowCatalogEntry[],
-  request: Omit<GraphStartRequest, "definition" | "published"> &
+  request: Omit<GraphStartRequest, "definition" | "published" | "test"> &
     Readonly<{ definition: unknown }>,
 ): Promise<GraphCompileResult> {
   const byInstallation = new Map(

@@ -148,3 +148,33 @@ it("requires the original definition and a concrete publication commit, never gu
       })(invalid)._tag,
     ).toBe("Failure");
 });
+
+it("accepts a test start and refuses it combined with a publication", () => {
+  const base = {
+    requestId: "request",
+    bindings: {},
+    input: {},
+    definition: {},
+  };
+  const test = { workflowId: "review", draftRevision: 2 };
+  const decode = (value: unknown) =>
+    S.decodeUnknownResult(graphStartRequestSchema, {
+      onExcessProperty: "error",
+    })(value);
+  const accepted = { ...base, test };
+  expect(S.decodeUnknownSync(graphStartRequestSchema)(accepted)).toEqual(
+    accepted,
+  );
+  const published = {
+    workflowId: "review",
+    commit: "a".repeat(40),
+    digest: "sha256:" + "a".repeat(64),
+  };
+  expect(decode({ ...base, test, published })._tag).toBe("Failure");
+  expect(decode({ ...base, test: { workflowId: "review" } })._tag).toBe(
+    "Failure",
+  );
+  expect(decode({ ...base, test: { ...test, draftRevision: -1 } })._tag).toBe(
+    "Failure",
+  );
+});

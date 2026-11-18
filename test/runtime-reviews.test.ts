@@ -144,3 +144,80 @@ it("retains a review and its admitted answer across shared owner recreation", as
     database.close();
   }
 });
+
+it("holds a review of a test run pending until a person answers, and never lets an Agent answer", async () => {
+  const compiled = await compile(
+    {
+      format: "fungi.workflow/v1",
+      title: "Draft review",
+      apps: {},
+      input: { type: "object", properties: {}, additionalProperties: false },
+      nodes: [
+        {
+          id: "look",
+          kind: "review",
+          title: "Keep it?",
+          show: [],
+          reviewers: "runner",
+          timeout: 60000,
+        },
+      ],
+      edges: [],
+      output: { item: { node: "look", port: "approved" } },
+    },
+    {},
+    {},
+  );
+  if (!compiled.ok) throw new Error(JSON.stringify(compiled.issues));
+  const database = new DatabaseSync(":memory:");
+  try {
+    const runs = createGraphWorkflowRuns(fromNodeSqlite(database));
+    expect(
+      runs.startCompiled({
+        teamId: "team",
+        runId: "test-run",
+        requestId: "test-request",
+        actorId: "member",
+        computerId: null,
+        plan: compiled.plan,
+        input: {},
+        ceiling: { nodes: [], nodeGitAccess: [] },
+        source: "test",
+        test: { workflowId: "draft", draftRevision: 2 },
+        libraryInstallationId: "library",
+        initiatedBy: { kind: "member", memberId: "member" },
+      }),
+    ).toBe("started");
+    const review = {
+      runId: "test-run",
+      nodeId: "look",
+      iteration: "0",
+      instanceId: "test-run",
+      eventType: "review_native",
+      title: "Keep it?",
+      reviewers: "runner" as const,
+      timeout: 60000,
+      show: [],
+    };
+    runs.openReview(review);
+    expect(runs.reviews("test-run")[0]?.status).toBe("pending");
+    // An Agent, even the run's own grantor, never answers; the review waits on.
+    expect(
+      runs.answerReview(
+        review,
+        { approved: true },
+        { kind: "agent", actorId: "member", isOwner: true },
+      ),
+    ).toBe("denied");
+    expect(runs.reviews("test-run")[0]?.status).toBe("pending");
+    expect(
+      runs.answerReview(
+        review,
+        { approved: true },
+        { kind: "member", actorId: "member", isOwner: false },
+      ),
+    ).toBe("accepted");
+  } finally {
+    database.close();
+  }
+});

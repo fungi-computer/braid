@@ -27,7 +27,7 @@ export type WorkflowRunPreparation = Readonly<{
   (
     | Readonly<{
         initiatedBy: WorkflowMemberInitiator;
-        source: "manual" | "schedule" | "event";
+        source: "manual" | "schedule" | "event" | "test";
         libraryInstallationId?: string;
         /** The firing event's repository; only the trigger owner supplies it. */
         triggerRepository?: string;
