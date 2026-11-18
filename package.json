@@ -1,6 +1,6 @@
 {
   "name": "@fungi.computer/braid",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "author": "Levi <levi@technomancy.dev>",
   "type": "module",
   "description": "Pure versioned Workflow graph validation and content-addressed compilation",
@@ -34,7 +34,7 @@
   "dependencies": {
     "@cfworker/json-schema": "4.1.1",
     "@fungi.computer/almanac": "0.2.1",
-    "@fungi.computer/mycelium": "0.4.6",
+    "@fungi.computer/mycelium": "0.4.7",
     "effect": "4.0.2",
     "jsonpointer": "5.0.1",
     "mustache": "4.2.0",
