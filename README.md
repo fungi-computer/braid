@@ -1,5 +1,124 @@
 # Braid (`@fungi.computer/braid`)
 
+Braid checks a workflow, a chart of steps that call your Apps' methods, and runs
+it on Cloudflare Workflows. A workflow can pause for a review, repeat steps or
+start from a trigger.
+
+```mermaid
+flowchart LR
+  Editor[Trellis or your editor] -->|workflow graph| Validate[validate]
+  Catalog[App method catalog] --> Validate
+  Validate -->|issues, or ok| Compile[compile]
+  Compile -->|plan + digest| Engine[Workers engine]
+  Engine --> Runs[Workflow runs]
+```
+
+## Quick start
+
+Install it, then save this as `plan.ts` and run it with Node 24. It checks a
+one-node workflow against a catalog of App methods and compiles it to a plan.
+
+```sh
+npm install @fungi.computer/braid
+```
+
+```ts
+import {
+  compile,
+  validate,
+  type Catalog,
+  type WorkflowDefinition,
+} from "@fungi.computer/braid";
+
+const catalog: Catalog = {
+  "app:prints": {
+    methods: {
+      generate: {
+        description: "Generate a panel",
+        digest: "generate-v1",
+        input: {
+          type: "object",
+          properties: { prompt: { type: "string" } },
+          required: ["prompt"],
+          additionalProperties: false,
+        },
+        output: {
+          type: "object",
+          properties: { image: { type: "string", format: "fungi:image" } },
+          required: ["image"],
+          additionalProperties: false,
+        },
+        effect: "write",
+        approval: "none",
+        requires: ["media.generation"],
+      },
+    },
+  },
+};
+
+const graph: WorkflowDefinition = {
+  format: "fungi.workflow/v1",
+  title: "Panel",
+  apps: { prints: { appId: "app:prints", role: "media" } },
+  input: {
+    type: "object",
+    properties: { prompt: { type: "string" } },
+    required: ["prompt"],
+    additionalProperties: false,
+  },
+  nodes: [
+    {
+      id: "panel",
+      kind: "app",
+      app: "prints",
+      method: "generate",
+      methodDigest: "generate-v1",
+      values: {},
+    },
+  ],
+  edges: [
+    {
+      from: { node: "$input", port: "prompt" },
+      to: { node: "panel", port: "prompt" },
+    },
+  ],
+  output: { panel: { node: "panel", port: "image" } },
+};
+
+console.log(validate(graph, catalog).length); // 0 issues
+const compiled = await compile(graph, catalog, {
+  prints: { appId: "app:prints", installationId: "installation-1" },
+});
+console.log(compiled.ok ? compiled.plan.planDigest : compiled.issues);
+```
+
+It prints `0` and the plan's SHA-256 digest.
+
+## Common tasks
+
+### Check a graph and get editor-ready issues
+
+`validate(graph, catalog)` returns typed issues. See
+[Validate and compile](#validate-and-compile).
+
+### Compile to a plan
+
+`compile` returns a topologically ordered plan with a SHA-256 `planDigest`. See
+the Quick start.
+
+### Add a review, a repeat or a trigger
+
+See [Reviews](#reviews), [Bounded Repeat](#bounded-repeat) and
+[Triggers](#triggers).
+
+### Run it on Cloudflare
+
+See [Workers engine](#workers-engine) and [Host runtime](#host-runtime).
+
+## Reference
+
+### Overview
+
 Braid runs workflows: typed graphs of App methods with reviews, repeats and
 triggers. It validates and compiles a `fungi.workflow/v1` graph to a plan and
 executes it on Cloudflare Workflows.
@@ -277,6 +396,11 @@ declarations and input parsers with a provider-boundary fake. It exercises both
 animate choices, keep/reject, declared refusal, Pending replay, and raw
 scalar/array method values through the native graph engine; it makes no provider
 calls.
+
+## Examples
+
+The [Quick start](#quick-start) is the maintained example.
+[V1 contract](#v1-contract) describes every node kind.
 
 ## License
 
