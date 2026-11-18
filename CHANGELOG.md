@@ -1,5 +1,11 @@
 # @fungi.computer/braid
 
+## 0.5.1
+
+### Patch Changes
+
+- @fungi.computer/mycelium@0.4.5
+
 ## 0.5.0
 
 ### Minor Changes
