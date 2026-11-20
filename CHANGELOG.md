@@ -1,5 +1,15 @@
 # @fungi.computer/braid
 
+## 0.6.5
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @fungi.computer/agar@0.25.0
+  - @fungi.computer/puffball@0.13.0
+  - @fungi.computer/mycelium@0.4.8
+
 ## 0.6.4
 
 ### Patch Changes
