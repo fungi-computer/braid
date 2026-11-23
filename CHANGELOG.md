@@ -1,5 +1,11 @@
 # @fungi.computer/braid
 
+## 0.6.16
+
+### Patch Changes
+
+- @fungi.computer/agar@0.28.5
+
 ## 0.6.15
 
 ### Patch Changes
