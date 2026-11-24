@@ -1,6 +1,6 @@
 {
   "name": "@fungi.computer/braid",
-  "version": "0.6.19",
+  "version": "0.6.20",
   "author": "Levi <levi@technomancy.dev>",
   "type": "module",
   "description": "Pure versioned Workflow graph validation and content-addressed compilation",
@@ -34,16 +34,16 @@
   "dependencies": {
     "@cfworker/json-schema": "4.1.1",
     "@fungi.computer/almanac": "0.2.1",
-    "@fungi.computer/mycelium": "0.5.0",
+    "@fungi.computer/mycelium": "0.5.1",
     "effect": "4.0.2",
     "jsonpointer": "5.0.1",
     "mustache": "4.2.0",
     "zod": "4.4.3",
-    "@fungi.computer/agar": "0.29.0",
+    "@fungi.computer/agar": "0.29.1",
     "@fungi.computer/gills": "0.4.0",
-    "@fungi.computer/watchdog": "0.1.6",
-    "@fungi.computer/puffball": "0.15.1",
-    "@fungi.computer/cairn": "0.1.0"
+    "@fungi.computer/watchdog": "0.1.7",
+    "@fungi.computer/puffball": "0.15.2",
+    "@fungi.computer/cairn": "0.1.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260828.1",
