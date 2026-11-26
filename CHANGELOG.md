@@ -1,5 +1,12 @@
 # @fungi.computer/braid
 
+## 0.6.27
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/mycelium@0.5.7
+
 ## 0.6.26
 
 ### Patch Changes
